@@ -1,0 +1,41 @@
+{
+  "total_clips": 4,
+  "clips": [
+    {
+      "clip_id": "DJI_20250830072532_0001_D",
+      "path": "data/clips/DJI_20250830072532_0001_D.MP4",
+      "filename": "DJI_20250830072532_0001_D.MP4",
+      "duration": 19.7364,
+      "fps": 60000.0,
+      "width": 3840,
+      "height": 2880
+    },
+    {
+      "clip_id": "DJI_20250830072738_0002_D",
+      "path": "data/clips/DJI_20250830072738_0002_D.MP4",
+      "filename": "DJI_20250830072738_0002_D.MP4",
+      "duration": 49.877333,
+      "fps": 60000.0,
+      "width": 3840,
+      "height": 2880
+    },
+    {
+      "clip_id": "DJI_20250830080106_0003_D",
+      "path": "data/clips/DJI_20250830080106_0003_D.MP4",
+      "filename": "DJI_20250830080106_0003_D.MP4",
+      "duration": 43.690667,
+      "fps": 60000.0,
+      "width": 3840,
+      "height": 2880
+    },
+    {
+      "clip_id": "DJI_20250830084210_0004_D",
+      "path": "data/clips/DJI_20250830084210_0004_D.MP4",
+      "filename": "DJI_20250830084210_0004_D.MP4",
+      "duration": 90.688,
+      "fps": 60000.0,
+      "width": 3840,
+      "height": 2880
+    }
+  ]
+}

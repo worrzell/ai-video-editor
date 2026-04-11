@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+pydantic
+openai-whisper
+sentence-transformers
+faiss-cpu
+ollama
+ffmpeg-python
+typer
+pytest
+black
+flake8
+opencv-python
+pillow
+clip-by-openai
+torch
+torchvision

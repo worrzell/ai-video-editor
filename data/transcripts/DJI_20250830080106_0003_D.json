@@ -1,0 +1,48 @@
+{
+  "clip_id": "DJI_20250830080106_0003_D",
+  "filename": "DJI_20250830080106_0003_D.MP4",
+  "duration": 0.0,
+  "language": "nn",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.2800000000000002,
+      "text": "R tokens"
+    },
+    {
+      "start": 2.62,
+      "end": 8.42,
+      "text": "IU"
+    },
+    {
+      "start": 11.82,
+      "end": 14.200000000000001,
+      "text": "11"
+    },
+    {
+      "start": 14.200000000000001,
+      "end": 15.68,
+      "text": "nickel"
+    },
+    {
+      "start": 15.68,
+      "end": 22.740000000000002,
+      "text": "17"
+    },
+    {
+      "start": 23.22,
+      "end": 27.98,
+      "text": "steel"
+    },
+    {
+      "start": 27.98,
+      "end": 29.740000000000002,
+      "text": "rod"
+    },
+    {
+      "start": 29.74,
+      "end": 32.82,
+      "text": "prosecutors"
+    }
+  ]
+}

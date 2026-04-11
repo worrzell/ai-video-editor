@@ -1,0 +1,33 @@
+# Configures the backend project.
+# https://moonrepo.dev/docs/config/project
+
+language: "python"
+
+# Tasks to run within the project.
+tasks:
+  install:
+    script: "python3 -m venv venv && ./venv/bin/pip install -r requirements.txt"
+    inputs:
+      - "requirements.txt"
+    outputs:
+      - "venv/"
+
+  dev:
+    script: "./venv/bin/python main.py"
+    deps:
+      - "install"
+
+  test:
+    script: "./venv/bin/pytest"
+    deps:
+      - "install"
+
+  lint:
+    script: "./venv/bin/flake8 ."
+    deps:
+      - "install"
+
+  format:
+    script: "./venv/bin/black ."
+    deps:
+      - "install"
