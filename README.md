@@ -10,21 +10,30 @@ A fully offline AI-powered video editing tool that accepts multiple video clips 
 - **Semantic Retrieval:** Vector-based search to find relevant clip segments
 - **LLM Planning:** Generates structured edit plans using local LLMs (Ollama)
 - **FFmpeg Rendering:** Concatenates and renders final video with aspect ratio support
+- **DaVinci Resolve Integration:** Optional advanced rendering with professional color grading and effects
 - **CLI Interface:** Simple command-line workflow
 
 ## Quick Start
 
 ### 1. Installation
 
-Clone the repository and set up the Python environment:
+Clone the repository and install dependencies using Poetry and the root Moon workspace:
 
 ```bash
 git clone <repo_url>
 cd ai-video-editor
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r backend/requirements.txt
+poetry install
 ```
+
+If you want to use Moon tasks from the workspace root instead of calling Poetry directly:
+
+```bash
+moon run backend:install
+```
+
+This installs dependencies based on `pyproject.toml` and creates a local Poetry-managed virtual environment.
+
+If Poetry is not installed, follow the Poetry installation instructions at https://python-poetry.org/docs/#installation.
 
 ### 2. Install System Dependencies
 
@@ -48,6 +57,15 @@ sudo apt-get install ffmpeg
 choco install ffmpeg
 ```
 
+**DaVinci Resolve (Optional for Advanced Rendering):**
+```bash
+# Install DaVinci Resolve Studio (paid version required for command-line rendering)
+# Download from: https://www.blackmagicdesign.com/products/davinciresolve
+
+# The web UI includes a checkbox to use DaVinci Resolve for final rendering
+# This provides professional color grading, effects, and higher quality output
+```
+
 ### 3. Prepare Your Video Clips
 
 Place video clips in `data/clips/`:
@@ -55,6 +73,30 @@ Place video clips in `data/clips/`:
 mkdir -p data/clips
 cp your_videos/*.mp4 data/clips/
 ```
+
+## Web UI (New)
+
+Start the web interface from the repository root using Poetry:
+
+```bash
+poetry run uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8000
+```
+
+Or use Moon:
+
+```bash
+moon run backend:web
+```
+
+Then open `http://localhost:8000` in your browser.
+
+If you need to pass CLI arguments through the root task, use:
+
+```bash
+moon run backend:dev -- ingest ./data/clips/
+```
+
+---
 
 ## Complete Workflow
 
@@ -219,15 +261,37 @@ Run the `index` command to build the index from transcripts.
 
 ## Development
 
-### Running Tests (future)
+### Install dependencies
 ```bash
-pytest backend/tests/
+poetry install
+```
+
+### Running Tests
+```bash
+poetry run pytest backend/tests
+# or
+moon run backend:test
 ```
 
 ### Code Formatting
 ```bash
-black backend/
-flake8 backend/
+poetry run black backend/
+poetry run flake8 backend/
+# or
+moon run backend:format
+moon run backend:lint
+```
+
+### Running CLI commands through Poetry
+```bash
+poetry run python backend/main.py ingest ./data/clips/
+poetry run python backend/main.py process --whisper-model small
+```
+
+### Running CLI commands through Moon
+```bash
+moon run backend:dev -- ingest ./data/clips/
+moon run backend:dev -- process --whisper-model small
 ```
 
 ## Project Structure

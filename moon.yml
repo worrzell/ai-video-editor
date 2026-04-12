@@ -1,0 +1,30 @@
+projects:
+  backend:
+    root: .
+    tasks:
+      install:
+        script: "./.venv/bin/poetry install"
+        inputs:
+          - "pyproject.toml"
+        outputs:
+          - ".venv/"
+      dev:
+        script: "./.venv/bin/poetry run python backend/main.py"
+        deps:
+          - install
+      web:
+        script: "./.venv/bin/poetry run uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8000"
+        deps:
+          - install
+      test:
+        script: "./.venv/bin/poetry run pytest backend/tests"
+        deps:
+          - install
+      lint:
+        script: "./.venv/bin/poetry run flake8 backend/"
+        deps:
+          - install
+      format:
+        script: "./.venv/bin/poetry run black backend/"
+        deps:
+          - install

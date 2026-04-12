@@ -1,4 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.python-version
 
-# moon
+# Virtual environments
+.venv/
+venv/
+backend/venv/
+
+# Moon
 .moon/cache
 .moon/docker
+
+# Generated data and outputs
+data/outputs/
+*.log
+
+# OS files
+.DS_Store

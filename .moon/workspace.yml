@@ -14,4 +14,3 @@ vcs:
   # @since 1.8.0
   # @values "bitbucket" | "github" | "gitlab" | "other"
   provider: "github"
-

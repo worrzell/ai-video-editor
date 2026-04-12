@@ -1,8 +1,10 @@
 fastapi
 uvicorn[standard]
 pydantic
-openai-whisper
-sentence-transformers
+setuptools<82
+wheel
+openai-whisper==20250625
+sentence-transformers==5.4.0
 faiss-cpu
 ollama
 ffmpeg-python
@@ -12,6 +14,6 @@ black
 flake8
 opencv-python
 pillow
-clip-by-openai
-torch
-torchvision
+torch==2.11.0
+torchvision==0.26.0
+python-multipart

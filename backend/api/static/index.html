@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Video Editor</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body>
+    <div class="app-shell">
+        <header class="hero">
+            <div>
+                <h1>AI Video Editor</h1>
+                <p>Upload clips, enter a prompt, and download the final rendered video.</p>
+            </div>
+        </header>
+
+        <main>
+            <section class="panel">
+                <h2>1. Upload clips</h2>
+                <form id="upload-form" class="form-card">
+                    <label for="clip-upload">Choose one or more video files</label>
+                    <input id="clip-upload" name="files" type="file" accept="video/*" multiple />
+                    <button type="submit" class="button">Upload clips</button>
+                </form>
+                <div class="info-box" id="upload-status">No uploads yet.</div>
+                <div class="file-list" id="clip-list"></div>
+            </section>
+
+            <section class="panel">
+                <h2>2. Enter prompt</h2>
+                <form id="prompt-form" class="form-card">
+                    <label for="prompt-text">Describe the edit you want</label>
+                    <textarea id="prompt-text" name="prompt" rows="4"
+                        placeholder="e.g. create a fast-paced highlight reel from the best moments"></textarea>
+                    <div class="checkbox-group">
+                        <label for="use-resolve">
+                            <input type="checkbox" id="use-resolve" name="use_resolve" />
+                            Use DaVinci Resolve for advanced rendering (requires DaVinci Resolve Studio)
+                        </label>
+                    </div>
+                    <button type="submit" class="button button-primary">Generate & Render</button>
+                </form>
+                <div class="info-box" id="render-status">Enter a prompt and render the final video.</div>
+                <div id="plan-preview" class="plan-preview"></div>
+            </section>
+
+            <section class="panel download-panel">
+                <h2>3. Download final output</h2>
+                <button id="download-button" class="button" disabled>Download Final Video</button>
+                <p class="hint">After rendering completes, the download button will become active.</p>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

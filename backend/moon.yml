@@ -6,28 +6,29 @@ language: "python"
 # Tasks to run within the project.
 tasks:
   install:
-    script: "python3 -m venv venv && ./venv/bin/pip install -r requirements.txt"
-    inputs:
-      - "requirements.txt"
-    outputs:
-      - "venv/"
+    script: "cd .. && ./.venv/bin/poetry install"
 
   dev:
-    script: "./venv/bin/python main.py"
+    script: "cd .. && ./.venv/bin/poetry run python backend/main.py"
+    deps:
+      - "install"
+
+  web:
+    script: "cd .. && ./.venv/bin/poetry run uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8000"
     deps:
       - "install"
 
   test:
-    script: "./venv/bin/pytest"
+    script: "cd .. && ./.venv/bin/poetry run pytest backend/tests"
     deps:
       - "install"
 
   lint:
-    script: "./venv/bin/flake8 ."
+    script: "cd .. && ./.venv/bin/poetry run flake8 backend/"
     deps:
       - "install"
 
   format:
-    script: "./venv/bin/black ."
+    script: "cd .. && ./.venv/bin/poetry run black backend/"
     deps:
       - "install"

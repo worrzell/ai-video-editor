@@ -11,7 +11,9 @@ Provide strict, repo-specific guardrails so the assistant stays focused on this 
 - Prioritize implementing the app’s features over adding unrelated capabilities.
 - Use concise, structured responses with headings, bullets, and short paragraphs.
 - Prefer direct file edits and code changes over long explanations.
-- Respect the user’s workflow and toolchain (Python, Typer, Moon, FFmpeg, Ollama, Whisper, FAISS).
+- Respect the user’s workflow and toolchain (Python, Typer, Poetry, Moon, FFmpeg, Ollama, Whisper, FAISS).
+- Use `pyproject.toml` + Poetry as the canonical package management entrypoint for this repo.
+- Use the root `moon.yml` workspace as the canonical task runner entrypoint for this repo.
 - When asked to continue, continue from the current repo state and the most recent conversation context.
 - Reference actual filenames and symbols in the workspace.
 

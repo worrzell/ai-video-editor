@@ -5,9 +5,39 @@
   "language": "nn",
   "segments": [
     {
-      "start": 30.0,
-      "end": 49.84,
-      "text": "1.5 km 2.5 km 3.5 km 4.5 km 5.5 km"
+      "start": 0.0,
+      "end": 2.0,
+      "text": "ḍᵗᵗᵗᵍᵃ ᵇᶦᵇ ᵃᵃᵗᵉᶉᵃ ᵍᵉᶉ ᵇᵉ ᵅᵗᵉᵇ ᵍᵃᵉ ─ᶉᵉ ᵍᵃᵉ ᵃᵃᵉᵉ。"
+    },
+    {
+      "start": 2.0,
+      "end": 6.0,
+      "text": "ᶜᵃᵉᵉᶉᵉᵃᵉ ᵃᵉᵉᶉᵉᵉ."
+    },
+    {
+      "start": 6.0,
+      "end": 8.0,
+      "text": "ᶠᵄᵃᵉᵉ."
+    },
+    {
+      "start": 8.74,
+      "end": 12.0,
+      "text": "ᶠᵉᵉᵉᵉᵉ ᶠᵉᵉᵉᵉᶉᵉ."
+    },
+    {
+      "start": 12.0,
+      "end": 12.5,
+      "text": "entonces"
+    },
+    {
+      "start": 42.0,
+      "end": 45.0,
+      "text": "seconds"
+    },
+    {
+      "start": 46.2,
+      "end": 48.18,
+      "text": "2 minutes"
     }
   ]
 }
