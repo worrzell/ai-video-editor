@@ -20,3 +20,7 @@ data/outputs/
 
 # OS files
 .DS_Store
+
+# .gitignore
+data/clips/
+data/outputs/
