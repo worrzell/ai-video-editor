@@ -164,10 +164,33 @@ def test_gemini_planner_execution():
     print(f"✓ Gemini 3.8 Flash returned valid EditPlan with {len(plan.timeline)} timeline items.")
 
 
+def test_download_streaming():
+    from backend.api.server import app, OUTPUT_VIDEO
+    client = TestClient(app)
+    login_res = client.post("/api/auth/login", json={"username": "admin", "password": "editor_admin_2026"})
+    assert login_res.status_code == 200
+    token = login_res.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    OUTPUT_VIDEO.parent.mkdir(parents=True, exist_ok=True)
+    test_content = b"TEST_STREAMING_VIDEO_BYTES" * 1000
+    OUTPUT_VIDEO.write_bytes(test_content)
+    try:
+        res = client.get("/api/download/output", headers=headers)
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "video/mp4"
+        assert res.content == test_content
+        print("✓ Chunked streaming download verified successfully.")
+    finally:
+        OUTPUT_VIDEO.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     print("\nRunning test suite...")
     test_password_hashing()
     test_auth_manager_and_provider()
     test_api_server_endpoints()
+    test_chunked_upload()
+    test_download_streaming()
     test_gemini_planner_execution()
     print("\n✓ ALL TESTS PASSED SUCCESSFULLY!")

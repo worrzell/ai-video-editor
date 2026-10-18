@@ -13,7 +13,7 @@ load_dotenv()
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi import status as http_status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -424,10 +424,29 @@ def render_prompt(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+def stream_file_chunks(file_path: Path, chunk_size: int = 1024 * 1024):
+    """Yield file in 1 MiB chunks to stream via chunked transfer encoding, bypassing Cloud Run 32 MiB buffer limit."""
+    with file_path.open('rb') as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+
 @app.get('/api/download/output')
-def download_output(user: User = Depends(get_current_user)) -> FileResponse:
+def download_output(user: User = Depends(get_current_user)) -> StreamingResponse:
     ensure_directories()
     if not OUTPUT_VIDEO.exists():
         raise HTTPException(status_code=404, detail='Final output not found. Please generate a video first.')
-    logger.info(f"User [{user.username}] downloading final output video.")
-    return FileResponse(path=OUTPUT_VIDEO, filename=OUTPUT_VIDEO.name, media_type='video/mp4')
+    file_size = OUTPUT_VIDEO.stat().st_size
+    logger.info(f"User [{user.username}] downloading final output video ({file_size} bytes via chunked streaming).")
+    headers = {
+        'Content-Disposition': f'attachment; filename="{OUTPUT_VIDEO.name}"',
+        'Accept-Ranges': 'bytes',
+    }
+    return StreamingResponse(
+        stream_file_chunks(OUTPUT_VIDEO),
+        media_type='video/mp4',
+        headers=headers,
+    )
