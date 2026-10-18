@@ -1,8 +1,10 @@
 import logging
 import shutil
+import subprocess
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
-import subprocess
 
 from backend.models.edit_plan import EditPlan
 from backend.services.ffmpeg_runner import trim_clip, concat_clips, verify_output
@@ -126,7 +128,8 @@ def render_plan(edit_plan: EditPlan, clips_dir: Path, output_path: Path, manifes
     """Render a video from an edit plan."""
     clips_dir = Path(clips_dir)
     output_path = Path(output_path)
-    temp_dir = output_path.parent / 'render_temp'
+    # Use local scratch storage in /tmp to avoid GCSFuse latency and out-of-order write errors
+    temp_dir = Path(tempfile.gettempdir()) / f"render_temp_{uuid.uuid4().hex[:8]}"
 
     try:
         logger.info(f'Starting render: {len(edit_plan.timeline)} segments (resolve={use_resolve})')
@@ -136,7 +139,7 @@ def render_plan(edit_plan: EditPlan, clips_dir: Path, output_path: Path, manifes
 
         # Create temp directory
         temp_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f'Using temp directory: {temp_dir}')
+        logger.info(f'Using local scratch directory: {temp_dir}')
 
         # Trim segments
         segment_files = []

@@ -155,6 +155,51 @@ btnLogout.addEventListener('click', async () => {
     await refreshStatus();
 });
 
+let renderPollTimeout = null;
+
+const stopRenderPolling = () => {
+    if (renderPollTimeout) {
+        clearTimeout(renderPollTimeout);
+        renderPollTimeout = null;
+    }
+};
+
+const pollRenderProgress = async () => {
+    stopRenderPolling();
+    try {
+        const prog = await apiRequest('/api/render/progress');
+        if (prog && prog.status === 'processing') {
+            renderProgressContainer.style.display = 'block';
+            renderProgressBar.style.width = `${prog.percent}%`;
+            renderProgressBar.style.background = 'linear-gradient(90deg, #6366f1, #38bdf8)';
+            renderPercentLabel.textContent = `${prog.percent}%`;
+            renderStepLabel.textContent = `Step ${prog.step}/5: ${prog.step_name}`;
+            renderStatus.textContent = prog.message;
+            downloadButton.disabled = true;
+            // Schedule next poll in 30 seconds (prevents overlapping requests)
+            renderPollTimeout = setTimeout(pollRenderProgress, 30000);
+        } else if (prog && prog.status === 'completed') {
+            renderProgressContainer.style.display = 'block';
+            renderProgressBar.style.width = '100%';
+            renderProgressBar.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+            renderPercentLabel.textContent = '100%';
+            renderStepLabel.textContent = 'Step 5/5: Render Complete!';
+            renderStatus.textContent = prog.message || 'Render complete. Final video is ready for download!';
+            downloadButton.disabled = false;
+        } else if (prog && prog.status === 'failed') {
+            renderProgressContainer.style.display = 'block';
+            renderProgressBar.style.width = '100%';
+            renderProgressBar.style.background = '#ef4444';
+            renderStepLabel.textContent = 'Render Failed';
+            renderPercentLabel.textContent = '!';
+            renderStatus.textContent = prog.message || 'Render pipeline encountered an error.';
+        }
+    } catch (e) {
+        // In case of transient network error, retry in 30 seconds
+        renderPollTimeout = setTimeout(pollRenderProgress, 30000);
+    }
+};
+
 const refreshStatus = async () => {
     try {
         const data = await apiRequest('/api/status');
@@ -168,6 +213,16 @@ const refreshStatus = async () => {
         }
         if (data.authenticated && data.user) {
             updateAuthUI(data.user);
+        }
+
+        // Check if render is active or completed on tab load / reopen
+        try {
+            const prog = await apiRequest('/api/render/progress');
+            if (prog && prog.status === 'processing') {
+                await pollRenderProgress();
+            }
+        } catch (_) {
+            // ignore progress check error
         }
     } catch (error) {
         uploadStatus.textContent = `Unable to refresh status: ${error.message}`;
@@ -270,33 +325,9 @@ promptForm.addEventListener('submit', async (event) => {
     renderStepLabel.textContent = 'Step 1/5: Ingesting Clips';
     renderPercentLabel.textContent = '5%';
 
-    // Poll live render progress every 800ms
-    const pollInterval = setInterval(async () => {
-        try {
-            const prog = await apiRequest('/api/render/progress');
-            if (prog && prog.status === 'processing') {
-                renderProgressBar.style.width = `${prog.percent}%`;
-                renderPercentLabel.textContent = `${prog.percent}%`;
-                renderStepLabel.textContent = `Step ${prog.step}/5: ${prog.step_name}`;
-                renderStatus.textContent = prog.message;
-            } else if (prog && prog.status === 'completed') {
-                renderProgressBar.style.width = '100%';
-                renderPercentLabel.textContent = '100%';
-                renderStepLabel.textContent = 'Step 5/5: Render Complete!';
-                renderStatus.textContent = prog.message;
-                clearInterval(pollInterval);
-            } else if (prog && prog.status === 'failed') {
-                renderProgressBar.style.width = '100%';
-                renderProgressBar.style.background = '#ef4444';
-                renderStepLabel.textContent = 'Render Failed';
-                renderPercentLabel.textContent = '!';
-                renderStatus.textContent = prog.message || 'Render pipeline encountered an error.';
-                clearInterval(pollInterval);
-            }
-        } catch (e) {
-            // ignore temporary polling error
-        }
-    }, 800);
+    // Start 30s non-overlapping progress polling
+    stopRenderPolling();
+    renderPollTimeout = setTimeout(pollRenderProgress, 3000);
 
     try {
         const response = await apiRequest('/api/render', {
@@ -307,8 +338,9 @@ promptForm.addEventListener('submit', async (event) => {
                 use_resolve: useResolve 
             }),
         });
-        clearInterval(pollInterval);
+        stopRenderPolling();
         renderProgressBar.style.width = '100%';
+        renderProgressBar.style.background = 'linear-gradient(90deg, #10b981, #059669)';
         renderPercentLabel.textContent = '100%';
         renderStepLabel.textContent = 'Complete!';
         renderStatus.textContent = 'Render complete. Final video is ready for download!';
@@ -316,7 +348,7 @@ promptForm.addEventListener('submit', async (event) => {
         downloadButton.disabled = false;
         await refreshStatus();
     } catch (error) {
-        clearInterval(pollInterval);
+        stopRenderPolling();
         renderProgressBar.style.width = '100%';
         renderProgressBar.style.background = '#ef4444';
         renderStepLabel.textContent = 'Render Failed';

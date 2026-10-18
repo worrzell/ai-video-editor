@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -36,6 +36,54 @@ export default function RenderScreen() {
     message: string;
   } | null>(null);
 
+  const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stopPolling = () => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  };
+
+  const pollProgress = async () => {
+    stopPolling();
+    try {
+      const prog = await apiRequest<{
+        status: string;
+        step: number;
+        total_steps: number;
+        percent: number;
+        step_name: string;
+        message: string;
+      }>('/api/render/progress');
+      if (prog && prog.status === 'processing') {
+        setRendering(true);
+        setRenderProgress(prog);
+        setStatusMsg(prog.message);
+        pollTimeoutRef.current = setTimeout(pollProgress, 30000);
+      } else if (prog && prog.status === 'completed') {
+        setRenderProgress({ ...prog, percent: 100, step_name: 'Complete' });
+        setStatusMsg('Render complete! Go to Library tab to download.');
+        setStatusVariant('success');
+        setRendering(false);
+      } else if (prog && prog.status === 'failed') {
+        setRendering(false);
+        setStatusMsg(`Render failed: ${prog.message || 'Error during rendering'}`);
+        setStatusVariant('error');
+      }
+    } catch (e) {
+      pollTimeoutRef.current = setTimeout(pollProgress, 30000);
+    }
+  };
+
+  useEffect(() => {
+    // Check if render is active when opening or switching to screen
+    pollProgress();
+    return () => {
+      stopPolling();
+    };
+  }, []);
+
   const handleRender = async () => {
     if (!user) {
       Alert.alert('Sign In Required', 'Go to the Profile tab to sign in before rendering.');
@@ -61,30 +109,9 @@ export default function RenderScreen() {
     );
     setStatusVariant('info');
 
-    // Poll live render progress every 1 second
-    const pollInterval = setInterval(async () => {
-      try {
-        const prog = await apiRequest<{
-          status: string;
-          step: number;
-          total_steps: number;
-          percent: number;
-          step_name: string;
-          message: string;
-        }>('/api/render/progress');
-        if (prog && prog.status === 'processing') {
-          setRenderProgress(prog);
-          setStatusMsg(prog.message);
-        } else if (prog && prog.status === 'completed') {
-          setRenderProgress({ ...prog, percent: 100 });
-          clearInterval(pollInterval);
-        } else if (prog && prog.status === 'failed') {
-          clearInterval(pollInterval);
-        }
-      } catch (e) {
-        // ignore polling glitch
-      }
-    }, 1000);
+    // Trigger initial check after 3s, then repeat every 30s
+    stopPolling();
+    pollTimeoutRef.current = setTimeout(pollProgress, 3000);
 
     try {
       const body = new URLSearchParams({
@@ -101,7 +128,7 @@ export default function RenderScreen() {
         }
       );
 
-      clearInterval(pollInterval);
+      stopPolling();
       setRenderProgress((prev) => (prev ? { ...prev, percent: 100, step_name: 'Complete' } : null));
       setStatusMsg('Render complete! Go to Library tab to download.');
       setStatusVariant('success');
@@ -109,7 +136,7 @@ export default function RenderScreen() {
       // Navigate to Library tab (index 2) after a short delay
       setTimeout(() => (navigation as any).navigate('Library'), 1500);
     } catch (e: unknown) {
-      clearInterval(pollInterval);
+      stopPolling();
       const msg = e instanceof Error ? e.message : 'Render failed';
       setStatusMsg(`Render failed: ${msg}`);
       setStatusVariant('error');

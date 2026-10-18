@@ -106,7 +106,7 @@ jobs:
             --memory 8Gi \
             --cpu 4 \
             --timeout 900 \
-            --concurrency 10 \
+            --concurrency 80 \
             --execution-environment gen2 \
             --add-volume "name=video-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}" \
             --add-volume-mount "volume=video-data,mount-path=/app/data" \
