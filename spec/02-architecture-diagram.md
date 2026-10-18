@@ -1,94 +1,108 @@
-# Architecture Diagram
+# Architecture Diagram — AI Video Editor
 
 ## System Overview
 
-The diagram below shows the core pipeline for the local-first AI video editing tool, including the optional UI layer.
+The diagram below illustrates the end-to-end architecture of the AI Video Editor platform across Web, Mobile, Cloud Run, AI inference providers, and persistent storage.
 
 ```mermaid
 flowchart TD
-    subgraph UI[User Interface]
-      U1[CLI / Frontend UI]
-      U2[Prompt Entry]
-      U3[Clip Upload / Source Selection]
-      U1 --> U2
-      U1 --> U3
+    subgraph Clients ["Client Layer"]
+        W["Web UI (Responsive HTML5 / CSS3 / Vanilla JS)"]
+        M["Mobile App (Expo / React Native 0.76)"]
+        C["CLI (Typer / Moon Workspace)"]
     end
 
-    U3 -->|Uploads / Clip paths| B[Ingestion Service]
-    U2 -->|Prompt| H[Prompt Embedding]
-
-    subgraph Backend
-      B[Ingestion Service]
-      C[Media Processing]
-      D[Transcription]
-      E[Metadata Extraction]
-      F[Segment Embeddings]
-      G[Vector Store / FAISS]
-      I[Retrieval]
-      J[LLM Planner]
-      K[Edit Plan JSON]
-      L[Execution Engine]
-      M[FFmpeg Rendering]
+    subgraph Security ["Authentication & Protection"]
+        JWT["JWT Bearer / HttpOnly Cookie Auth"]
+        Cap["Cloud Run Spend Cap (Budget Target)"]
+        KS["Automated Billing Killswitch (Cloud Function Gen2)"]
     end
 
-    subgraph Data
-      Q[Raw Clips]
-      R[Transcripts]
-      S[Embeddings]
-      T[Edit Plans]
-      P[Final Output Video]
+    subgraph CloudRun ["Google Cloud Run (asia-south1, Max Instances: 1, Concurrency: 80)"]
+        FE["Google Frontend (GFE)"]
+        API["FastAPI Backend (backend/api/server.py)"]
+        
+        subgraph Services ["Core Processing Services"]
+            UP["Chunked Upload Service (/api/upload/chunk)"]
+            PROG["5-Step Render Progress Tracker"]
+            ING["Ingestion & Metadata Extraction (FFprobe)"]
+            TR["Speech-to-Text Transcription (Whisper AI)"]
+            EMB["Semantic Embedding (all-MiniLM-L6-v2)"]
+            VEC["Vector Store & Retrieval (FAISS)"]
+            PLAN["Edit Planner (backend/services/planner.py)"]
+            EXEC["Video Execution Engine (backend/services/executor.py)"]
+        end
+
+        subgraph LocalScratch ["Local Container RAM / Ephemeral Disk"]
+            TMP["/tmp/render_temp_* (High-Speed FFmpeg Segment Scratch)"]
+        end
     end
 
-    Q --> B
-    B --> C
-    C --> D
-    C --> E
-    D --> F
-    F --> G
-    G --> I
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    L --> M
-    M --> P
+    subgraph AI ["AI Inference Engines"]
+        GEM["Google Gemini API (gemini-3.8-flash)"]
+        OLL["Local Ollama (llama3) [Offline Mode]"]
+    end
 
-    D --> R
-    F --> S
-    K --> T
-    U1 -->|Render/preview commands| L
-    U1 -->|Plan review| K
+    subgraph Storage ["Persistent Storage (GCS Bucket: ai-video-editor-data-512009 via gcsfuse)"]
+        DB[("Persistent SQLite: /app/data/app.db")]
+        CLIPS["Clips: /app/data/clips/"]
+        TRANS["Transcripts: /app/data/transcripts/"]
+        OUT["Rendered Final Output: /app/data/outputs/final.mp4"]
+    end
+
+    %% Client Interactions
+    W -->|Chunked Upload & 30s Polling| FE
+    M -->|Chunked Upload & 30s Polling| FE
+    C -->|Local Processing| API
+    FE --> API
+    API --> JWT
+    API --> UP
+    API --> PROG
+
+    %% Pipeline Flow
+    UP --> CLIPS
+    API --> ING
+    ING --> CLIPS
+    ING --> TR
+    TR --> TRANS
+    TRANS --> EMB
+    EMB --> VEC
+    API --> PLAN
+    VEC --> PLAN
+    PLAN -->|Structured Prompt| GEM
+    PLAN -.->|Fallback / Local| OLL
+    PLAN --> EXEC
+    
+    %% Execution & Assembly
+    CLIPS --> EXEC
+    EXEC -->|Fast Random-Access MP4 Writes| TMP
+    TMP -->|Concatenate Final Video| OUT
+    EXEC --> DB
+    PROG --> API
+
+    %% Safety & Spend Net
+    Cap -.->|Pause on limit| CloudRun
+    KS -.->|Unlink billing on exceed| CloudRun
 ```
 
-## Components
+---
 
-- `CLI / Frontend UI` — user-facing interaction layer for clip ingestion, prompt input, and render control.
-- `Ingestion Service` — loads clips, validates formats, and extracts metadata with FFprobe/FFmpeg.
-- `Media Processing` — orchestrates transcription and metadata normalization for each clip.
-- `Transcription` — generates segment-level text data using Whisper locally.
-- `Metadata Extraction` — parses clip duration, fps, resolution, and other video properties.
-- `Segment Embeddings` — converts transcript segments to embedding vectors.
-- `Vector Store / FAISS` — stores segment embeddings and metadata for retrieval.
-- `Retrieval` — matches the user prompt to relevant transcript segments.
-- `Prompt Embedding` — converts the edit request into vector space for retrieval.
-- `LLM Planner` — builds a strict JSON edit plan using Ollama and retrieved segments.
-- `Edit Plan JSON` — structured DSL defining timeline, clip segments, and style.
-- `Execution Engine` — trims selected segments and manages FFmpeg composition.
-- `FFmpeg Rendering` — concatenates trimmed clips and applies aspect ratio/output formatting.
-- `Output Video` — the final rendered file saved to the output directory.
+## Component Details
 
-## UI Layer
+### 1. Client Layer
+- **Web UI**: Built with modern responsive HTML/CSS/JS. Supports drag-and-drop chunked uploads (20 MB chunks), live 5-step progress visualization, and automatic polling recovery when closing and reopening tabs.
+- **Mobile App**: Cross-platform iOS/Android app built with Expo SDK 52 and React Native 0.76. Features native video picking (`expo-image-picker`), keychain auth (`expo-secure-store`), and native sharing (`expo-sharing`).
+- **CLI**: Typer-based command line workflow for offline developer usage and batch processing.
 
-- The UI layer can initially be a CLI implemented in `backend/main.py`.
-- Future UI can be a lightweight web frontend or desktop interface that interacts with the same backend pipeline.
-- The UI layer is responsible for:
-  - selecting clips or clip directories
-  - entering natural language prompts
-  - previewing generated edit plan metadata
-  - triggering processing, generation, and render commands
+### 2. Google Cloud Run Engine
+- **Single-Instance Hard Ceiling (`--max-instances 1`)**: Ensures the container never auto-scales into multiple instances, eliminating the risk of unexpected cloud compute bills.
+- **Scale-to-Zero (`--min-instances 0`)**: Automatically shuts down container instances when idle, incurring ₹0 / $0 compute costs.
+- **80-Slot Container Concurrency**: Allows static asset delivery and 30-second progress polls to be served with zero latency and zero HTTP 429 drops while long-running renders execute.
 
-## Notes
+### 3. Scratch Disk vs. Persistent Storage Isolation
+- **Local Scratch (`/tmp`)**: Intermediate FFmpeg video segments are trimmed and processed in local container storage. This eliminates `BufferedWriteHandler.OutOfOrderError` and network latency from Cloud Storage FUSE.
+- **Persistent Storage (`/app/data`)**: Cloud Storage bucket mounted via `gcsfuse` ensures that SQLite database records, uploaded source clips, transcripts, and final rendered videos persist indefinitely across container restarts.
 
-- This architecture is aligned with `spec/01-core-architecture.md`.
-- The UI layer is intentionally separate from the backend pipeline to keep the architecture modular.
-- Mermaid diagrams are used for all architecture-level spec files.
+### 4. Dual AI Planning
+- **Cloud Mode**: Google Gemini API (`gemini-3.8-flash`) provides sub-second structured JSON edit plan generation with high reasoning capacity.
+- **Offline Mode**: Ollama (`llama3`) allows the entire pipeline to function completely disconnected from the internet.

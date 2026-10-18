@@ -1,31 +1,32 @@
 # Copilot Instructions for AI Video Editor
 
 ## Purpose
-Provide strict, repo-specific guardrails so the assistant stays focused on this app and does not divert into unrelated topics.
+Provide strict, repo-specific guardrails so the assistant stays focused on this project, respects its architecture, and maintains its zero-cost cloud protections and local-first capabilities.
+
+## Architecture Context
+- **Hybrid Platform:** Supports both **Local-First CLI** (Typer, Whisper, FAISS, Ollama) and **Production Cloud Run** (FastAPI, Google Gemini `gemini-3.8-flash`, persistent SQLite on Cloud Storage volume mounts, and Expo/React Native mobile app).
+- **Production URL:** `https://ai-video-editor-backend-379657549399.asia-south1.run.app` (`asia-south1`).
+- **Zero-Cost Budget Guardrails:**
+  - Scale-to-zero compute: `--min-instances 0` (₹0 when idle).
+  - Strict instance ceiling: `--max-instances 1` (never increase max instances).
+  - Database: Persistent SQLite file on GCS volume mount (`/app/data/app.db`) to avoid Cloud SQL charges.
+  - Container Concurrency: Tuned to 80 to prevent HTTP 429 errors.
+  - Scratch Disk: FFmpeg intermediate clips MUST be rendered in `/tmp` to avoid GCSFuse latency.
+  - Polling Cadence: Client progress polling MUST use non-overlapping 30-second intervals (`setTimeout`, not rapid `setInterval`).
 
 ## Do this
 - Work only within the `ai-video-editor` workspace and its files.
 - Follow the project architecture and specs in the `spec/` folder.
-- Ensure each new feature, file, or code area has a corresponding spec file in `spec/` before proceeding.
+- Ensure each new feature, file, or architectural change has a corresponding spec file in `spec/` or updates existing specs.
 - For architecture-level details, create and maintain Mermaid diagrams in `spec/`.
-- Prioritize implementing the app’s features over adding unrelated capabilities.
-- Use concise, structured responses with headings, bullets, and short paragraphs.
-- Prefer direct file edits and code changes over long explanations.
-- Respect the user’s workflow and toolchain (Python, Typer, Poetry, Moon, FFmpeg, Ollama, Whisper, FAISS).
-- Use `pyproject.toml` + Poetry as the canonical package management entrypoint for this repo.
-- Use the root `moon.yml` workspace as the canonical task runner entrypoint for this repo.
-- When asked to continue, continue from the current repo state and the most recent conversation context.
-- Reference actual filenames and symbols in the workspace.
+- Prioritize implementing and improving core video editing and AI planning features.
+- Respect the toolchain: Python 3.13, FastAPI, Pytest, React Native 0.76.5, Expo SDK 52, TypeScript, FFmpeg.
+- Reference actual filenames, endpoints, and symbols in the workspace.
+- Preserve all spend protections, killswitch scripts, and budget boundaries.
 
 ## Do not do this
-- Do not propose unrelated tools, frameworks, or cloud services.
-- Do not add features that are outside the current app scope unless the user explicitly asks.
-- Do not overwrite code blindly without confirming existing file structure first.
-- Do not give verbose or speculative answers; keep responses short and task-focused.
-- Do not ignore the user’s preferred conventions about tool usage and code style.
-
-## Behavior
-- If a dependency or config is missing, state the issue and suggest the minimal fix.
-- If a file does not exist, create it only when the user asks for a specific implementation.
-- If the user asks why something was done, explain the exact reason and align with the repo’s current setup.
-- Always check the current workspace before making assumptions.
+- Do not add paid cloud services (e.g., Cloud SQL, memorystore, load balancers) that violate the zero-cost architecture.
+- Do not lower polling intervals below 15-30 seconds or introduce rapid `setInterval` loops that cause Cloud Run 429 drops.
+- Do not write intermediate temporary video files into `/app/data/outputs` (always use `/tmp`).
+- Do not overwrite code blindly without inspecting existing files.
+- Do not propose unrelated frameworks or libraries.
