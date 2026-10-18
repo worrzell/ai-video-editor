@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import typer
 
 from backend.services.ingestion import ingest_clips, save_manifest, scan_clips
@@ -85,8 +88,8 @@ def generate(prompt: str = typer.Argument(..., help='Natural language prompt for
     raise typer.Exit(1)
 
 @app.command()
-def plan(prompt: str = typer.Argument(..., help='Edit request'), output_dir: Path = typer.Option(DATA_DIR, help='Output directory with index'), top_k: int = typer.Option(5, help='Top-k segments for LLM'), use_all_clips: bool = typer.Option(False, help='Sample segments from all clips instead of semantic retrieval'), segments_per_clip: int = typer.Option(3, help='Segments per clip when using all clips'), embedding_model: str = typer.Option('all-MiniLM-L6-v2', help='Embedding model'), ollama_model: str = typer.Option('llama3', help='Ollama model name')):
-    """Generate edit plan using LLM planning (Phase 3)."""
+def plan(prompt: str = typer.Argument(..., help='Edit request'), output_dir: Path = typer.Option(DATA_DIR, help='Output directory with index'), top_k: int = typer.Option(5, help='Top-k segments for LLM'), use_all_clips: bool = typer.Option(False, help='Sample segments from all clips instead of semantic retrieval'), segments_per_clip: int = typer.Option(3, help='Segments per clip when using all clips'), embedding_model: str = typer.Option('all-MiniLM-L6-v2', help='Embedding model'), gemini_model: str = typer.Option('gemini-3.8-flash', help='Gemini model name')):
+    """Generate edit plan using Gemini Cloud LLM planning (Phase 3)."""
     typer.echo(f'[*] Planning edit for: "{prompt}"')
     try:
         # Load index and search
@@ -101,9 +104,9 @@ def plan(prompt: str = typer.Argument(..., help='Edit request'), output_dir: Pat
             typer.echo('[!] No segments retrieved. Cannot generate plan.', err=True)
             raise typer.Exit(1)
         
-        # Generate plan with LLM
-        typer.echo(f'[*] Calling LLM to generate plan...')
-        edit_plan = plan_edit(prompt, retrieved, model_name=ollama_model)
+        # Generate plan with Gemini
+        typer.echo(f'[*] Calling Gemini ({gemini_model}) to generate plan...')
+        edit_plan = plan_edit(prompt, retrieved, model_name=gemini_model)
         
         # Save plan
         plan_path = output_dir / 'edit_plan.json'

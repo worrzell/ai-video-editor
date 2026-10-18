@@ -1,6 +1,9 @@
 projects:
   backend:
     root: .
+  mobile:
+    root: mobile
+
     tasks:
       install:
         script: "./.venv/bin/poetry install"

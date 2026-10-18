@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: video_editor_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: worrzell
+      POSTGRES_PASSWORD: editor_db_password_2026
+      POSTGRES_DB: ai_video_editor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video_editor_backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-3.8-flash
+      - DATABASE_URL=postgresql://worrzell:editor_db_password_2026@db:5432/ai_video_editor
+      - AUTH_DEFAULT_USER=admin
+      - AUTH_DEFAULT_PASS=editor_admin_2026
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-super-secret-jwt-signing-key-replace-in-prod}
+      - AUTH_TOKEN_EXPIRE_HOURS=72
+      - PORT=8000
+      - HOST=0.0.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  postgres_data:

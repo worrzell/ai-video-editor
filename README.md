@@ -96,7 +96,49 @@ If you need to pass CLI arguments through the root task, use:
 moon run backend:dev -- ingest ./data/clips/
 ```
 
+## Mobile App (Expo / React Native)
+
+Cross-platform iOS + Android app inside `mobile/` with a 4-tab bottom navigation bar.
+
+### Prerequisites
+
+- [Node.js 20+](https://nodejs.org/)
+- [Expo Go](https://expo.dev/go) app installed on your iOS or Android device (or use an emulator)
+- Backend running (see Web UI section above)
+
+### Setup
+
+```bash
+cd mobile
+cp .env.example .env
+# Edit .env — set EXPO_PUBLIC_API_BASE_URL:
+#   iOS Simulator:     http://localhost:8000
+#   Android Emulator:  http://10.0.2.2:8000
+#   Physical device:   http://<your-LAN-IP>:8000
+
+npm install
+npx expo start
+```
+
+Scan the QR code with **Expo Go** on your device, or press `i` (iOS Simulator) / `a` (Android Emulator).
+
+Or use Moon from the repo root:
+
+```bash
+moon run mobile:start
+```
+
+### Tabs
+
+| Tab | Purpose |
+|---|---|
+| 🎬 **Upload** | Pick videos from camera roll → upload to backend |
+| ✨ **Render** | Enter a prompt, toggle options, generate edit plan & render |
+| 📁 **Library** | View uploaded clips, download & share the final video |
+| 👤 **Profile** | Sign in / register / log out, view server info |
+
 ---
+
 
 ## Complete Workflow
 

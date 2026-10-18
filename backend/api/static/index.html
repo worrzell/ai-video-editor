@@ -4,16 +4,28 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Video Editor</title>
+    <title>AI Video Editor (Gemini + PostgreSQL)</title>
     <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
 <body>
     <div class="app-shell">
         <header class="hero">
-            <div>
-                <h1>AI Video Editor</h1>
-                <p>Upload clips, enter a prompt, and download the final rendered video.</p>
+            <div class="hero-content">
+                <div>
+                    <h1>AI Video Editor</h1>
+                    <p>Powered by Google Gemini 3.8 Flash & PostgreSQL. Secure cookie-based authentication.</p>
+                </div>
+                <div class="auth-bar" id="auth-bar">
+                    <div id="auth-logged-out" class="auth-actions">
+                        <button id="btn-open-login" class="button">Sign In</button>
+                        <button id="btn-open-register" class="button button-secondary">Register</button>
+                    </div>
+                    <div id="auth-logged-in" class="auth-actions" style="display: none;">
+                        <span id="user-badge" class="user-badge">👤 <span id="username-display">User</span></span>
+                        <button id="btn-logout" class="button button-outline">Log Out</button>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -34,14 +46,14 @@
                 <form id="prompt-form" class="form-card">
                     <label for="prompt-text">Describe the edit you want</label>
                     <textarea id="prompt-text" name="prompt" rows="4"
-                        placeholder="e.g. create a fast-paced highlight reel from the best moments"></textarea>
+                        placeholder="e.g. create a fast-paced highlight reel with dynamic cuts"></textarea>
                     <div class="checkbox-group">
                         <label for="use-resolve">
                             <input type="checkbox" id="use-resolve" name="use_resolve" />
                             Use DaVinci Resolve for advanced rendering (requires DaVinci Resolve Studio)
                         </label>
                     </div>
-                    <button type="submit" class="button button-primary">Generate & Render</button>
+                    <button type="submit" class="button button-primary">Generate with Gemini & Render</button>
                 </form>
                 <div class="info-box" id="render-status">Enter a prompt and render the final video.</div>
                 <div id="plan-preview" class="plan-preview"></div>
@@ -53,6 +65,34 @@
                 <p class="hint">After rendering completes, the download button will become active.</p>
             </section>
         </main>
+    </div>
+
+    <!-- Authentication Modal Dialog -->
+    <div id="auth-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 id="modal-title">Sign In</h3>
+                <button id="modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <form id="auth-form" class="modal-body">
+                <div id="auth-error" class="alert-error" style="display: none;"></div>
+                <div class="form-group">
+                    <label for="auth-username">Username / ID</label>
+                    <input type="text" id="auth-username" required placeholder="e.g. admin" autocomplete="username" />
+                </div>
+                <div class="form-group">
+                    <label for="auth-password">Password / Pass</label>
+                    <input type="password" id="auth-password" required placeholder="Enter your password" autocomplete="current-password" />
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" id="auth-submit-btn" class="button button-primary">Sign In</button>
+                    <p class="switch-mode">
+                        <span id="switch-prompt">Don't have an account?</span>
+                        <a href="#" id="switch-link">Create one</a>
+                    </p>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="/static/script.js"></script>

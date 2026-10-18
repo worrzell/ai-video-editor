@@ -1,0 +1,14 @@
+language: javascript
+type: application
+tasks:
+  install:
+    command: npm install
+  start:
+    command: npx expo start
+    local: true
+  android:
+    command: npx expo start --android
+    local: true
+  ios:
+    command: npx expo start --ios
+    local: true
