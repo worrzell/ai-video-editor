@@ -37,6 +37,15 @@
                     <input id="clip-upload" name="files" type="file" accept="video/*" multiple />
                     <button type="submit" class="button">Upload clips</button>
                 </form>
+                <div id="upload-progress-container" class="progress-container" style="display: none;">
+                    <div class="progress-labels">
+                        <span id="upload-step-label">Uploading...</span>
+                        <span id="upload-percent-label">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="upload-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
                 <div class="info-box" id="upload-status">No uploads yet.</div>
                 <div class="file-list" id="clip-list"></div>
             </section>
@@ -55,6 +64,15 @@
                     </div>
                     <button type="submit" class="button button-primary">Generate with Gemini & Render</button>
                 </form>
+                <div id="render-progress-container" class="progress-container" style="display: none;">
+                    <div class="progress-labels">
+                        <span id="render-step-label">Step 1/5: Ingesting clips...</span>
+                        <span id="render-percent-label">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="render-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                </div>
                 <div class="info-box" id="render-status">Enter a prompt and render the final video.</div>
                 <div id="plan-preview" class="plan-preview"></div>
             </section>

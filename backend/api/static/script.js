@@ -7,6 +7,17 @@ const planPreview = document.getElementById('plan-preview');
 const downloadButton = document.getElementById('download-button');
 const promptText = document.getElementById('prompt-text');
 
+// Progress bar elements
+const uploadProgressContainer = document.getElementById('upload-progress-container');
+const uploadProgressBar = document.getElementById('upload-progress-bar');
+const uploadStepLabel = document.getElementById('upload-step-label');
+const uploadPercentLabel = document.getElementById('upload-percent-label');
+
+const renderProgressContainer = document.getElementById('render-progress-container');
+const renderProgressBar = document.getElementById('render-progress-bar');
+const renderStepLabel = document.getElementById('render-step-label');
+const renderPercentLabel = document.getElementById('render-percent-label');
+
 // Auth elements
 const authModal = document.getElementById('auth-modal');
 const authForm = document.getElementById('auth-form');
@@ -180,9 +191,15 @@ uploadForm.addEventListener('submit', async (event) => {
     const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB chunks to safely stay under Cloud Run's 32 MB limit
 
     uploadStatus.textContent = 'Preparing upload...';
+    uploadProgressContainer.style.display = 'block';
+    uploadProgressBar.style.width = '0%';
+    uploadProgressBar.style.background = 'linear-gradient(90deg, #6366f1, #38bdf8)';
+    uploadPercentLabel.textContent = '0%';
+
     try {
         let totalUploaded = 0;
-        for (const file of files) {
+        for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+            const file = files[fileIdx];
             const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
             for (let i = 0; i < totalChunks; i++) {
                 const start = i * CHUNK_SIZE;
@@ -195,10 +212,15 @@ uploadForm.addEventListener('submit', async (event) => {
                 formData.append('chunk_index', i);
                 formData.append('total_chunks', totalChunks);
 
+                const chunkPercent = Math.round(((i + 1) / totalChunks) * 100);
+                uploadProgressBar.style.width = `${chunkPercent}%`;
+                uploadPercentLabel.textContent = `${chunkPercent}%`;
+
                 if (totalChunks > 1) {
-                    const percent = Math.round(((i + 1) / totalChunks) * 100);
-                    uploadStatus.textContent = `Uploading ${file.name}: part ${i + 1}/${totalChunks} (${percent}%)...`;
+                    uploadStepLabel.textContent = `Uploading ${file.name}: part ${i + 1}/${totalChunks}`;
+                    uploadStatus.textContent = `Uploading ${file.name}: part ${i + 1}/${totalChunks} (${chunkPercent}%)...`;
                 } else {
+                    uploadStepLabel.textContent = `Uploading ${file.name}`;
                     uploadStatus.textContent = `Uploading ${file.name}...`;
                 }
 
@@ -209,10 +231,16 @@ uploadForm.addEventListener('submit', async (event) => {
             }
             totalUploaded++;
         }
+        uploadProgressBar.style.width = '100%';
+        uploadPercentLabel.textContent = '100%';
+        uploadStepLabel.textContent = 'Upload Complete!';
         uploadStatus.textContent = `Upload successful! ${totalUploaded} file(s) saved.`;
         filesInput.value = '';
         await refreshStatus();
+        setTimeout(() => { uploadProgressContainer.style.display = 'none'; }, 2500);
     } catch (error) {
+        uploadProgressBar.style.background = '#ef4444';
+        uploadStepLabel.textContent = 'Upload Failed';
         uploadStatus.textContent = `Upload failed: ${error.message}`;
     }
 });
@@ -231,9 +259,44 @@ promptForm.addEventListener('submit', async (event) => {
     }
 
     const useResolve = document.getElementById('use-resolve').checked;
-    renderStatus.textContent = `Generating edit plan with Gemini & rendering video${useResolve ? ' with DaVinci Resolve' : ''}…`;
+    renderStatus.textContent = `Initializing render pipeline...`;
     planPreview.textContent = '';
     downloadButton.disabled = true;
+
+    // Show and reset render progress bar
+    renderProgressContainer.style.display = 'block';
+    renderProgressBar.style.width = '5%';
+    renderProgressBar.style.background = 'linear-gradient(90deg, #6366f1, #38bdf8)';
+    renderStepLabel.textContent = 'Step 1/5: Ingesting Clips';
+    renderPercentLabel.textContent = '5%';
+
+    // Poll live render progress every 800ms
+    const pollInterval = setInterval(async () => {
+        try {
+            const prog = await apiRequest('/api/render/progress');
+            if (prog && prog.status === 'processing') {
+                renderProgressBar.style.width = `${prog.percent}%`;
+                renderPercentLabel.textContent = `${prog.percent}%`;
+                renderStepLabel.textContent = `Step ${prog.step}/5: ${prog.step_name}`;
+                renderStatus.textContent = prog.message;
+            } else if (prog && prog.status === 'completed') {
+                renderProgressBar.style.width = '100%';
+                renderPercentLabel.textContent = '100%';
+                renderStepLabel.textContent = 'Step 5/5: Render Complete!';
+                renderStatus.textContent = prog.message;
+                clearInterval(pollInterval);
+            } else if (prog && prog.status === 'failed') {
+                renderProgressBar.style.width = '100%';
+                renderProgressBar.style.background = '#ef4444';
+                renderStepLabel.textContent = 'Render Failed';
+                renderPercentLabel.textContent = '!';
+                renderStatus.textContent = prog.message || 'Render pipeline encountered an error.';
+                clearInterval(pollInterval);
+            }
+        } catch (e) {
+            // ignore temporary polling error
+        }
+    }, 800);
 
     try {
         const response = await apiRequest('/api/render', {
@@ -244,10 +307,20 @@ promptForm.addEventListener('submit', async (event) => {
                 use_resolve: useResolve 
             }),
         });
-        renderStatus.textContent = 'Render complete. Download is ready.';
+        clearInterval(pollInterval);
+        renderProgressBar.style.width = '100%';
+        renderPercentLabel.textContent = '100%';
+        renderStepLabel.textContent = 'Complete!';
+        renderStatus.textContent = 'Render complete. Final video is ready for download!';
         planPreview.textContent = JSON.stringify(response.plan, null, 2);
         downloadButton.disabled = false;
+        await refreshStatus();
     } catch (error) {
+        clearInterval(pollInterval);
+        renderProgressBar.style.width = '100%';
+        renderProgressBar.style.background = '#ef4444';
+        renderStepLabel.textContent = 'Render Failed';
+        renderPercentLabel.textContent = '!';
         renderStatus.textContent = `Render failed: ${error.message}`;
     }
 });
