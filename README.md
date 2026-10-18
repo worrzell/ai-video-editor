@@ -184,9 +184,9 @@ Once secrets are set, **every push to `main`** triggers [`.github/workflows/depl
 3. Deploys the revision to Cloud Run with GCS volume mount (persisting SQLite and video clips).
 4. Outputs the live HTTPS URL in the GitHub Actions summary.
 
-### 4. Dual Cost Protection Controls
+### 4. Cost Protection Controls (Project & Org/Account Level)
 
-#### A. Native Cloud Run Spend Cap (Recommended)
+#### A. Native Cloud Run Spend Cap (Service Level)
 Google Cloud supports native **Spend Caps on Cloud Run**:
 1. Go to **[Cloud Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets)**.
 2. Create/edit budget for `ai-video-editor-512009` scoped to **Cloud Run**.
@@ -194,14 +194,25 @@ Google Cloud supports native **Spend Caps on Cloud Run**:
 4. Select **"Enable Spend Cap"** / **"Pause service when limit is reached"**.
 5. When the limit is hit, Cloud Run invocations are automatically paused non-destructively, without affecting your storage data.
 
-#### B. Automated Billing Killswitch (Nuclear Fallback)
-For complete project-level protection, you can also arm the automated killswitch:
+#### B. Org / Account-Wide Overall Spend Limit
+To protect across **all current and future projects**:
+1. In [Cloud Billing Budgets](https://console.cloud.google.com/billing/budgets), create a budget with **Scope: All projects** and **Services: All services**.
+2. Set target amount (e.g. ₹100 or ₹500).
+3. Connect notification to Pub/Sub topic `projects/ai-video-editor-512009/topics/billing-killswitch-topic`.
+
+#### C. Automated Billing Killswitch (Nuclear Fallback)
+Deploy the automated killswitch:
 ```bash
+# Sets up Pub/Sub topic and Cloud Function (supports single project or all projects)
 bash scripts/setup-killswitch.sh
 ```
-If project spend exceeds ₹1.00, this function will automatically unlink billing from `ai-video-editor-512009`. To re-enable billing later:
+If spending exceeds your budget threshold, the function immediately unlinks billing across projects. To re-enable billing later:
 ```bash
-bash scripts/relink-billing.sh <YOUR_BILLING_ACCOUNT_ID>
+# Re-link a single project:
+bash scripts/relink-billing.sh ai-video-editor-512009 <YOUR_BILLING_ACCOUNT_ID>
+
+# Or re-link ALL projects under your billing account:
+bash scripts/relink-billing.sh --all <YOUR_BILLING_ACCOUNT_ID>
 ```
 
 ---
