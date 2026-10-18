@@ -92,10 +92,11 @@ def call_gemini_api(prompt_text: str, api_key: Optional[str] = None, model_name:
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
+        headers={"Content-Type": "application/json"},
+        method="POST"
     )
 
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         data = json.loads(resp.read().decode("utf-8"))
         candidates = data.get("candidates", [])
         if not candidates:

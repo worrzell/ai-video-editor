@@ -1,11 +1,29 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 import subprocess
 
 from backend.models.edit_plan import EditPlan
 from backend.services.ffmpeg_runner import trim_clip, concat_clips, verify_output
+
+logger = logging.getLogger('ai-video-editor.executor')
+
+
+def find_clip_file(clips_dir: Path, clip_id: str) -> Optional[Path]:
+    """Find a clip file by direct match, extension matching, or stem matching."""
+    direct = clips_dir / clip_id
+    if direct.is_file():
+        return direct
+    matches = list(clips_dir.glob(f"{clip_id}.*"))
+    if matches and matches[0].is_file():
+        return matches[0]
+    stem = Path(clip_id).stem
+    stem_matches = list(clips_dir.glob(f"{stem}.*"))
+    if stem_matches and stem_matches[0].is_file():
+        return stem_matches[0]
+    return None
+
 
 def render_with_resolve(segment_files: List[Path], output_path: Path, edit_plan: EditPlan) -> Path:
     """Render using DaVinci Resolve for advanced post-processing."""
@@ -19,7 +37,7 @@ def render_with_resolve(segment_files: List[Path], output_path: Path, edit_plan:
         # Use Resolve command-line rendering (if available)
         # Note: This requires DaVinci Resolve Studio with command-line tools
         cmd = [
-            'resolve',  # or full path to resolve executable
+            'resolve',
             '-p', str(project_file),
             '-o', str(output_path),
             '--format', 'mp4',
@@ -27,7 +45,7 @@ def render_with_resolve(segment_files: List[Path], output_path: Path, edit_plan:
         ]
 
         logger.info(f'Rendering with DaVinci Resolve: {len(segment_files)} segments')
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)  # 30 min timeout
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
 
         if result.returncode != 0:
             logger.warning(f'Resolve rendering failed: {result.stderr}')
@@ -43,13 +61,14 @@ def render_with_resolve(segment_files: List[Path], output_path: Path, edit_plan:
     finally:
         # Cleanup project file
         if project_file.exists():
-            project_file.unlink()
+            try:
+                project_file.unlink()
+            except Exception:
+                pass
 
 
 def create_resolve_project(segment_files: List[Path], project_file: Path, edit_plan: EditPlan):
     """Create a basic DaVinci Resolve project file."""
-    # This is a simplified DRP (DaVinci Resolve Project) structure
-    # In practice, you'd need to create proper XML/JSON structure
     project_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <ResolveProject>
     <Timeline>
@@ -57,9 +76,9 @@ def create_resolve_project(segment_files: List[Path], project_file: Path, edit_p
             <VideoTrack>
 """
 
-    current_time = 0
+    current_time = 0.0
     for i, segment_file in enumerate(segment_files):
-        duration = 5.0  # Placeholder - you'd need to get actual duration
+        duration = 5.0
         project_content += f"""
                 <Clip index="{i}" start="{current_time}" duration="{duration}">
                     <MediaPath>{segment_file.resolve()}</MediaPath>
@@ -74,33 +93,32 @@ def create_resolve_project(segment_files: List[Path], project_file: Path, edit_p
 
     project_file.write_text(project_content, encoding='utf-8')
     logger.info(f'Created Resolve project: {project_file}')
+
+
+def validate_plan_against_clips(edit_plan: EditPlan, clips_dir: Path, manifest_path: Path = None):
     """Validate that all segments in the plan can be sourced from available clips."""
     logger.info('Validating edit plan against available clips...')
-    
+
     # Load manifest if available
     manifest = {}
     if manifest_path and manifest_path.exists():
         import json
         data = json.loads(manifest_path.read_text(encoding='utf-8'))
         manifest = {clip['clip_id']: clip for clip in data.get('clips', [])}
-    
+
     # Check each segment
     for i, segment in enumerate(edit_plan.timeline, 1):
         clip_id = segment.clip_id
-        
-        # Find clip file
-        clip_files = list(clips_dir.glob(f'{clip_id}.*'))
-        if not clip_files:
+        clip_path = find_clip_file(clips_dir, clip_id)
+        if not clip_path:
             raise FileNotFoundError(f'Clip not found for clip_id: {clip_id}')
-        
-        clip_path = clip_files[0]
-        
+
         # Validate timestamps
         if manifest and clip_id in manifest:
-            clip_duration = manifest[clip_id]['duration']
-            if segment.end > clip_duration:
+            clip_duration = manifest[clip_id].get('duration', 0)
+            if segment.end > clip_duration and clip_duration > 0:
                 logger.warning(f'Segment end time ({segment.end}s) exceeds clip duration ({clip_duration}s); clipping.')
-        
+
         logger.info(f'  [{i}] {clip_id}: {segment.start:.2f}s-{segment.end:.2f}s ✓')
 
 
@@ -123,13 +141,11 @@ def render_plan(edit_plan: EditPlan, clips_dir: Path, output_path: Path, manifes
         # Trim segments
         segment_files = []
         for index, segment in enumerate(edit_plan.timeline):
-            clip_files = list(clips_dir.glob(f'{segment.clip_id}.*'))
-            if not clip_files:
+            clip_path = find_clip_file(clips_dir, segment.clip_id)
+            if not clip_path:
                 raise FileNotFoundError(f'Clip not found for {segment.clip_id}')
 
-            clip_path = clip_files[0]
             output_segment = temp_dir / f'segment_{index:03d}.mp4'
-
             trim_clip(clip_path, output_segment, segment.start, segment.end)
             segment_files.append(output_segment)
             logger.info(f'Trimmed segment {index + 1}/{len(edit_plan.timeline)}')

@@ -28,6 +28,13 @@ export default function RenderScreen() {
   const [statusMsg, setStatusMsg] = useState('Enter a prompt and render the final video.');
   const [statusVariant, setStatusVariant] = useState<'info' | 'error' | 'success'>('info');
   const [plan, setPlan] = useState<Record<string, unknown> | null>(null);
+  const [renderProgress, setRenderProgress] = useState<{
+    step: number;
+    total_steps: number;
+    percent: number;
+    step_name: string;
+    message: string;
+  } | null>(null);
 
   const handleRender = async () => {
     if (!user) {
@@ -42,10 +49,42 @@ export default function RenderScreen() {
 
     setRendering(true);
     setPlan(null);
+    setRenderProgress({
+      step: 1,
+      total_steps: 5,
+      percent: 5,
+      step_name: 'Ingesting Clips',
+      message: 'Analyzing clips and generating timeline…',
+    });
     setStatusMsg(
       `Generating edit plan with Gemini & rendering video${useResolve ? ' with DaVinci Resolve' : ''}…`
     );
     setStatusVariant('info');
+
+    // Poll live render progress every 1 second
+    const pollInterval = setInterval(async () => {
+      try {
+        const prog = await apiRequest<{
+          status: string;
+          step: number;
+          total_steps: number;
+          percent: number;
+          step_name: string;
+          message: string;
+        }>('/api/render/progress');
+        if (prog && prog.status === 'processing') {
+          setRenderProgress(prog);
+          setStatusMsg(prog.message);
+        } else if (prog && prog.status === 'completed') {
+          setRenderProgress({ ...prog, percent: 100 });
+          clearInterval(pollInterval);
+        } else if (prog && prog.status === 'failed') {
+          clearInterval(pollInterval);
+        }
+      } catch (e) {
+        // ignore polling glitch
+      }
+    }, 1000);
 
     try {
       const body = new URLSearchParams({
@@ -62,12 +101,15 @@ export default function RenderScreen() {
         }
       );
 
+      clearInterval(pollInterval);
+      setRenderProgress((prev) => (prev ? { ...prev, percent: 100, step_name: 'Complete' } : null));
       setStatusMsg('Render complete! Go to Library tab to download.');
       setStatusVariant('success');
       setPlan(res.plan);
       // Navigate to Library tab (index 2) after a short delay
       setTimeout(() => (navigation as any).navigate('Library'), 1500);
     } catch (e: unknown) {
+      clearInterval(pollInterval);
       const msg = e instanceof Error ? e.message : 'Render failed';
       setStatusMsg(`Render failed: ${msg}`);
       setStatusVariant('error');
@@ -132,6 +174,25 @@ export default function RenderScreen() {
             )}
           </TouchableOpacity>
 
+          {rendering && renderProgress && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressStepText}>
+                  Step {renderProgress.step}/5: {renderProgress.step_name}
+                </Text>
+                <Text style={styles.progressPercentText}>{renderProgress.percent}%</Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.max(5, renderProgress.percent)}%` as any },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+
           <StatusBox message={statusMsg} variant={statusVariant} />
         </View>
 
@@ -193,4 +254,40 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#020617', fontWeight: '700', fontSize: 15 },
   buttonDisabled: { opacity: 0.45 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressContainer: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.7)',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressStepText: {
+    color: Colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  progressPercentText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  progressBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(148,163,184,0.15)',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
 });

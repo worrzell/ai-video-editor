@@ -312,6 +312,42 @@ def upload_clip_chunk(
     })
 
 
+render_progress = {
+    "status": "idle",
+    "step": 0,
+    "total_steps": 5,
+    "percent": 0,
+    "step_name": "",
+    "message": "Ready to render",
+    "error": None,
+}
+
+
+def update_render_progress(
+    step: int,
+    percent: int,
+    step_name: str,
+    message: str,
+    status: str = "processing",
+    error: Optional[str] = None
+):
+    global render_progress
+    render_progress.update({
+        "status": status,
+        "step": step,
+        "total_steps": 5,
+        "percent": percent,
+        "step_name": step_name,
+        "message": message,
+        "error": error,
+    })
+
+
+@app.get('/api/render/progress')
+def get_render_progress() -> JSONResponse:
+    return JSONResponse(render_progress)
+
+
 @app.post('/api/render')
 def render_prompt(
     prompt: str = Form(...),
@@ -320,6 +356,7 @@ def render_prompt(
 ) -> JSONResponse:
     ensure_directories()
     try:
+        update_render_progress(1, 10, "Scanning & Ingesting Clips", "Scanning uploaded video clips and metadata...")
         clips = scan_clips(CLIPS_DIR)
         if not clips:
             raise HTTPException(status_code=400, detail='No clips uploaded. Please upload video clips before rendering.')
@@ -329,8 +366,10 @@ def render_prompt(
             raise HTTPException(status_code=500, detail='Failed to ingest clips.')
         save_manifest(manifest, DATA_DIR)
 
+        update_render_progress(2, 35, "Transcribing Audio", "Transcribing speech from video clips with Whisper AI...")
         transcribe_clips(clips, TRANSCRIPTS_DIR, model_name='small')
 
+        update_render_progress(3, 55, "Semantic Indexing", "Building semantic index and searching relevant segments...")
         vector_store, _ = build_index(TRANSCRIPTS_DIR, DATA_DIR, embedding_model='all-MiniLM-L6-v2', use_multimodal=False)
         embedding_provider = EmbeddingProvider(model_name='all-MiniLM-L6-v2')
         retrieved_segments = retrieve_segments(prompt, vector_store, embedding_provider, top_k=5)
@@ -338,6 +377,7 @@ def render_prompt(
             raise HTTPException(status_code=500, detail='No relevant segments found for the prompt.')
 
         gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        update_render_progress(4, 75, "AI Edit Planning", f"Gemini AI ({gemini_model}) is designing timeline and transitions...")
         logger.info(f"User [{user.username}] generating plan with Gemini ({gemini_model})")
         edit_plan = plan_edit(prompt, retrieved_segments, model_name=gemini_model)
         
@@ -345,7 +385,10 @@ def render_prompt(
         plan_json_str = edit_plan.model_dump_json(indent=2)
         plan_path.write_text(plan_json_str, encoding='utf-8')
 
+        update_render_progress(5, 90, "FFmpeg Video Assembly", "Trimming clips and concatenating final video...")
         render_plan(edit_plan, CLIPS_DIR, OUTPUT_VIDEO, manifest_path=DATA_DIR / 'clips_manifest.json', use_resolve=use_resolve)
+
+        update_render_progress(5, 100, "Completed", "Final video rendered successfully!", status="completed")
 
         # Log render job to database
         session = get_session()
@@ -372,10 +415,12 @@ def render_prompt(
             'output_url': '/api/download/output',
             'plan': json.loads(plan_path.read_text(encoding='utf-8')),
         })
-    except HTTPException:
+    except HTTPException as exc:
+        update_render_progress(0, 0, "Failed", exc.detail, status="failed", error=exc.detail)
         raise
     except Exception as exc:
         logger.exception('Render pipeline failed')
+        update_render_progress(0, 0, "Failed", str(exc), status="failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
 
 
