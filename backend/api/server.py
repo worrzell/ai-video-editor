@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import uuid
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -248,6 +249,67 @@ def upload_clips(
         uploaded.append(upload_file.filename)
         logger.info(f'User [{user.username}] uploaded clip: {upload_file.filename}')
     return JSONResponse({'uploaded': uploaded, 'message': f'Uploaded {len(uploaded)} file(s).'})
+
+
+@app.post('/api/upload/chunk')
+def upload_clip_chunk(
+    file: UploadFile = File(...),
+    filename: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    user: User = Depends(get_current_user),
+) -> JSONResponse:
+    ensure_directories()
+    clean_name = Path(filename).name
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    temp_dir = DATA_DIR / "temp_uploads"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    user_prefix = re.sub(r'[^a-zA-Z0-9_-]', '_', user.id)
+    part_file = temp_dir / f"{user_prefix}_{clean_name}.part_{chunk_index}"
+
+    # If first chunk, clean up any previous stale parts for this file
+    if chunk_index == 0:
+        for old_part in temp_dir.glob(f"{user_prefix}_{clean_name}.part_*"):
+            try:
+                old_part.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    with part_file.open('wb') as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # When final chunk is received, assemble into destination
+    if chunk_index == total_chunks - 1:
+        destination = CLIPS_DIR / clean_name
+        with destination.open('wb') as out_buffer:
+            for i in range(total_chunks):
+                p = temp_dir / f"{user_prefix}_{clean_name}.part_{i}"
+                if not p.exists():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Upload interrupted: missing part {i} of {total_chunks} for {clean_name}."
+                    )
+                with p.open('rb') as in_part:
+                    shutil.copyfileobj(in_part, out_buffer)
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+        logger.info(f"User [{user.username}] completed chunked upload: {clean_name} ({total_chunks} chunk(s))")
+        return JSONResponse({
+            "status": "complete",
+            "filename": clean_name,
+            "message": f"Successfully uploaded {clean_name}.",
+        })
+
+    return JSONResponse({
+        "status": "chunk_received",
+        "chunk_index": chunk_index,
+        "total_chunks": total_chunks,
+    })
 
 
 @app.post('/api/render')

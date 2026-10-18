@@ -177,16 +177,39 @@ uploadForm.addEventListener('submit', async (event) => {
         return;
     }
 
-    const formData = new FormData();
-    files.forEach((file) => formData.append('files', file));
+    const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB chunks to safely stay under Cloud Run's 32 MB limit
 
-    uploadStatus.textContent = 'Uploading clips...';
+    uploadStatus.textContent = 'Preparing upload...';
     try {
-        const result = await apiRequest('/api/upload', {
-            method: 'POST',
-            body: formData,
-        });
-        uploadStatus.textContent = result.message || 'Upload successful.';
+        let totalUploaded = 0;
+        for (const file of files) {
+            const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, file.size);
+                const chunk = file.slice(start, end);
+
+                const formData = new FormData();
+                formData.append('file', chunk, file.name);
+                formData.append('filename', file.name);
+                formData.append('chunk_index', i);
+                formData.append('total_chunks', totalChunks);
+
+                if (totalChunks > 1) {
+                    const percent = Math.round(((i + 1) / totalChunks) * 100);
+                    uploadStatus.textContent = `Uploading ${file.name}: part ${i + 1}/${totalChunks} (${percent}%)...`;
+                } else {
+                    uploadStatus.textContent = `Uploading ${file.name}...`;
+                }
+
+                await apiRequest('/api/upload/chunk', {
+                    method: 'POST',
+                    body: formData,
+                });
+            }
+            totalUploaded++;
+        }
+        uploadStatus.textContent = `Upload successful! ${totalUploaded} file(s) saved.`;
         filesInput.value = '';
         await refreshStatus();
     } catch (error) {
