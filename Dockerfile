@@ -22,10 +22,10 @@ COPY pyproject.toml .
 # Create data directories
 RUN mkdir -p data/clips data/transcripts data/outputs
 
-EXPOSE 8000
+EXPOSE 8080
 
 ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
-CMD ["uvicorn", "backend.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn backend.api.server:app --host 0.0.0.0 --port ${PORT:-8080}"]

@@ -37,6 +37,9 @@ Thumbs.db
 .env.*.local
 *.db
 *.sqlite3
+*.json.key
+*sa-key*.json
+scripts/*.json
 
 # Generated Data & Media
 data/clips/

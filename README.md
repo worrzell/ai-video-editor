@@ -139,6 +139,53 @@ moon run mobile:start
 
 ---
 
+## Cloud Deployment & CI/CD (Google Cloud Platform)
+
+The application is cloud-ready and deploys to **Google Cloud Run** with persistent storage in **Google Cloud Storage (GCS)** and managed database in **Cloud SQL (PostgreSQL 16)**.
+
+### Target Setup
+- **GCP Project:** `ai-video-editor-512009`
+- **Region:** `asia-south1` (Mumbai)
+- **Container Registry:** Artifact Registry (`asia-south1-docker.pkg.dev`)
+- **Volume Mount:** GCS Bucket `ai-video-editor-data-512009` mounted at `/app/data`
+
+### 1. One-Time GCP Provisioning
+
+Run the automated provisioning script with your authenticated `gcloud` CLI:
+
+```bash
+# 1. Log in to gcloud (if not already logged in)
+gcloud auth login
+
+# 2. Run automated setup
+bash scripts/setup-gcp.sh
+```
+
+The script enables required APIs, creates the Artifact Registry repository, provisions the GCS bucket, configures Cloud SQL PostgreSQL, and generates a deployment Service Account key at `scripts/gcp-sa-key.json`.
+
+### 2. Configure GitHub Secrets
+
+Go to your repository on GitHub: **Settings → Secrets and variables → Actions** and add:
+
+| Secret Name | Value |
+|---|---|
+| `GCP_PROJECT_ID` | `ai-video-editor-512009` |
+| `GCP_SA_KEY` | Contents of `scripts/gcp-sa-key.json` |
+| `GEMINI_API_KEY` | Your Google Gemini API Key |
+| `AUTH_JWT_SECRET` | 64-char random string (e.g. from `openssl rand -hex 32`) |
+| `DB_PASSWORD` | PostgreSQL password output by `setup-gcp.sh` |
+| `DB_CONNECTION_NAME` | Connection name (e.g. `ai-video-editor-512009:asia-south1:ai-video-editor-db`) |
+
+### 3. Continuous Deployment
+
+Once secrets are set, **every push to `main`** triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+1. Runs automated tests (`pytest`) and typecheck (`tsc`).
+2. Builds and pushes the Docker container to Artifact Registry.
+3. Deploys the revision to Cloud Run with GCS volume mount and Cloud SQL connection.
+4. Outputs the live HTTPS URL in the GitHub Actions summary.
+
+---
+
 
 ## Complete Workflow
 
