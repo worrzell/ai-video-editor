@@ -6,7 +6,10 @@ wheel
 openai-whisper==20250625
 sentence-transformers==5.4.0
 faiss-cpu
-ollama
+psycopg2-binary
+sqlalchemy
+python-dotenv
+httpx
 ffmpeg-python
 typer
 pytest

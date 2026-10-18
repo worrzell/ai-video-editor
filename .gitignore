@@ -4,23 +4,56 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .python-version
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv/
 venv/
 backend/venv/
+ENV/
+env/
 
 # Moon
 .moon/cache
 .moon/docker
 
-# Generated data and outputs
-data/outputs/
-*.log
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# OS files
+# OS Files
 .DS_Store
+Thumbs.db
 
-# .gitignore
+# Environment and Secrets
+.env
+*.env
+!.env.example
+.env.local
+.env.*.local
+*.db
+*.sqlite3
+*.json.key
+*sa-key*.json
+scripts/*.json
+
+# Generated Data & Media
 data/clips/
 data/outputs/
+data/transcripts/
+*.log
+
+# Node / React Native / Expo
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

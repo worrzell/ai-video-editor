@@ -96,7 +96,127 @@ If you need to pass CLI arguments through the root task, use:
 moon run backend:dev -- ingest ./data/clips/
 ```
 
+## Mobile App (Expo / React Native)
+
+Cross-platform iOS + Android app inside `mobile/` with a 4-tab bottom navigation bar.
+
+### Prerequisites
+
+- [Node.js 20+](https://nodejs.org/)
+- [Expo Go](https://expo.dev/go) app installed on your iOS or Android device (or use an emulator)
+- Backend running (see Web UI section above)
+
+### Setup
+
+```bash
+cd mobile
+cp .env.example .env
+# Edit .env — set EXPO_PUBLIC_API_BASE_URL:
+#   iOS Simulator:     http://localhost:8000
+#   Android Emulator:  http://10.0.2.2:8000
+#   Physical device:   http://<your-LAN-IP>:8000
+
+npm install
+npx expo start
+```
+
+Scan the QR code with **Expo Go** on your device, or press `i` (iOS Simulator) / `a` (Android Emulator).
+
+Or use Moon from the repo root:
+
+```bash
+moon run mobile:start
+```
+
+### Tabs
+
+| Tab | Purpose |
+|---|---|
+| 🎬 **Upload** | Pick videos from camera roll → upload to backend |
+| ✨ **Render** | Enter a prompt, toggle options, generate edit plan & render |
+| 📁 **Library** | View uploaded clips, download & share the final video |
+| 👤 **Profile** | Sign in / register / log out, view server info |
+
 ---
+
+## Cloud Deployment & CI/CD (Google Cloud Platform)
+
+The application is cloud-ready and deploys to **Google Cloud Run** with persistent storage and database in **Google Cloud Storage (GCS)**, completely avoiding cloud database costs ($0/mo), with a **hard spending cap at ₹1.00**.
+
+### Target Architecture
+- **GCP Project:** `ai-video-editor-512009`
+- **Region:** `asia-south1` (Mumbai)
+- **Container Registry:** Artifact Registry (`asia-south1-docker.pkg.dev`)
+- **Volume Mount:** GCS Bucket `ai-video-editor-data-512009` mounted at `/app/data`
+- **Database:** Persistent SQLite at `/app/data/app.db` on GCS volume ($0 database charges)
+- **Scaling Limits:** `--min-instances 0` (scales to zero when idle = ₹0) & `--max-instances 1` (hard instance ceiling)
+
+### 1. One-Time GCP Provisioning
+
+Run the automated provisioning script with your authenticated `gcloud` CLI:
+
+```bash
+# 1. Log in to gcloud
+gcloud auth login
+
+# 2. Run automated setup (takes ~30 seconds)
+bash scripts/setup-gcp.sh
+
+# 3. (Optional) Arm the ₹1 Automated Killswitch
+bash scripts/setup-killswitch.sh
+```
+
+### 2. Configure GitHub Secrets
+
+Go to your repository on GitHub: **Settings → Secrets and variables → Actions** and add:
+
+| Secret Name | Value |
+|---|---|
+| `GCP_PROJECT_ID` | `ai-video-editor-512009` |
+| `GCP_SA_KEY` | Contents of `scripts/gcp-sa-key.json` |
+| `GEMINI_API_KEY` | Your Google AI Studio Gemini API Key |
+
+### 3. Continuous Deployment
+
+Once secrets are set, **every push to `main`** triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+1. Runs automated tests (`pytest`) and typecheck (`tsc`).
+2. Builds and pushes the Docker container to Artifact Registry.
+3. Deploys the revision to Cloud Run with GCS volume mount (persisting SQLite and video clips).
+4. Outputs the live HTTPS URL in the GitHub Actions summary.
+
+### 4. Cost Protection Controls (Project & Org/Account Level)
+
+#### A. Native Cloud Run Spend Cap (Service Level)
+Google Cloud supports native **Spend Caps on Cloud Run**:
+1. Go to **[Cloud Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets)**.
+2. Create/edit budget for `ai-video-editor-512009` scoped to **Cloud Run**.
+3. Set your monthly limit (e.g. ₹50 or ₹100 / $1).
+4. Select **"Enable Spend Cap"** / **"Pause service when limit is reached"**.
+5. When the limit is hit, Cloud Run invocations are automatically paused non-destructively, without affecting your storage data.
+
+#### B. Org / Account-Wide Overall Spend Limit
+To protect across **all current and future projects**:
+1. In [Cloud Billing Budgets](https://console.cloud.google.com/billing/budgets), create a budget with **Scope: All projects** and **Services: All services**.
+2. Set target amount (e.g. ₹100 or ₹500).
+3. Connect notification to Pub/Sub topic `projects/ai-video-editor-512009/topics/billing-killswitch-topic`.
+
+#### C. Automated Billing Killswitch (Nuclear Fallback)
+Deploy the automated killswitch:
+```bash
+# Sets up Pub/Sub topic and Cloud Function (supports single project or all projects)
+bash scripts/setup-killswitch.sh
+```
+If spending exceeds your budget threshold, the function immediately unlinks billing across projects. To re-enable billing later:
+```bash
+# Re-link a single project:
+bash scripts/relink-billing.sh ai-video-editor-512009 <YOUR_BILLING_ACCOUNT_ID>
+
+# Or re-link ALL projects under your billing account:
+bash scripts/relink-billing.sh --all <YOUR_BILLING_ACCOUNT_ID>
+```
+
+---
+
 
 ## Complete Workflow
 

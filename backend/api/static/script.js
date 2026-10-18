@@ -7,15 +7,142 @@ const planPreview = document.getElementById('plan-preview');
 const downloadButton = document.getElementById('download-button');
 const promptText = document.getElementById('prompt-text');
 
+// Auth elements
+const authModal = document.getElementById('auth-modal');
+const authForm = document.getElementById('auth-form');
+const modalTitle = document.getElementById('modal-title');
+const modalClose = document.getElementById('modal-close');
+const authError = document.getElementById('auth-error');
+const authUsername = document.getElementById('auth-username');
+const authPassword = document.getElementById('auth-password');
+const authSubmitBtn = document.getElementById('auth-submit-btn');
+const switchPrompt = document.getElementById('switch-prompt');
+const switchLink = document.getElementById('switch-link');
+const btnOpenLogin = document.getElementById('btn-open-login');
+const btnOpenRegister = document.getElementById('btn-open-register');
+const btnLogout = document.getElementById('btn-logout');
+const authLoggedOut = document.getElementById('auth-logged-out');
+const authLoggedIn = document.getElementById('auth-logged-in');
+const usernameDisplay = document.getElementById('username-display');
+
+let isRegisterMode = false;
+let currentUser = null;
+
 const apiRequest = async (url, options = {}) => {
+    // Ensure cookies are included with requests
+    options.credentials = 'same-origin';
     const response = await fetch(url, options);
     const contentType = response.headers.get('content-type') || '';
+
+    if (response.status === 401) {
+        currentUser = null;
+        updateAuthUI(null);
+        openAuthModal(false, 'Please sign in to perform this action.');
+        throw new Error('Authentication required (401).');
+    }
+
     if (!response.ok) {
         const error = contentType.includes('application/json') ? await response.json() : await response.text();
         throw new Error(error.detail || error.message || JSON.stringify(error));
     }
     return contentType.includes('application/json') ? response.json() : response.text();
 };
+
+const updateAuthUI = (user) => {
+    currentUser = user;
+    if (user && user.username) {
+        authLoggedOut.style.display = 'none';
+        authLoggedIn.style.display = 'flex';
+        usernameDisplay.textContent = user.username;
+    } else {
+        authLoggedOut.style.display = 'flex';
+        authLoggedIn.style.display = 'none';
+        usernameDisplay.textContent = 'User';
+    }
+};
+
+const checkAuth = async () => {
+    try {
+        const data = await apiRequest('/api/auth/me');
+        if (data.authenticated && data.user) {
+            updateAuthUI(data.user);
+        } else {
+            updateAuthUI(null);
+        }
+    } catch (err) {
+        updateAuthUI(null);
+    }
+};
+
+const openAuthModal = (registerMode = false, errorMsg = '') => {
+    isRegisterMode = registerMode;
+    authModal.style.display = 'flex';
+    authUsername.value = '';
+    authPassword.value = '';
+    authError.style.display = errorMsg ? 'block' : 'none';
+    authError.textContent = errorMsg;
+
+    if (isRegisterMode) {
+        modalTitle.textContent = 'Create Account';
+        authSubmitBtn.textContent = 'Register';
+        switchPrompt.textContent = 'Already have an account?';
+        switchLink.textContent = 'Sign In';
+    } else {
+        modalTitle.textContent = 'Sign In';
+        authSubmitBtn.textContent = 'Sign In';
+        switchPrompt.textContent = "Don't have an account?";
+        switchLink.textContent = 'Create one';
+    }
+    authUsername.focus();
+};
+
+const closeAuthModal = () => {
+    authModal.style.display = 'none';
+    authError.style.display = 'none';
+};
+
+switchLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    openAuthModal(!isRegisterMode);
+});
+
+btnOpenLogin.addEventListener('click', () => openAuthModal(false));
+btnOpenRegister.addEventListener('click', () => openAuthModal(true));
+modalClose.addEventListener('click', closeAuthModal);
+
+authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = authUsername.value.trim();
+    const password = authPassword.value;
+    if (!username || !password) return;
+
+    authError.style.display = 'none';
+    const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+
+    try {
+        const res = await apiRequest(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+        });
+        updateAuthUI(res.user);
+        closeAuthModal();
+        await refreshStatus();
+    } catch (err) {
+        authError.textContent = err.message;
+        authError.style.display = 'block';
+    }
+});
+
+btnLogout.addEventListener('click', async () => {
+    try {
+        await apiRequest('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+        // ignore
+    }
+    updateAuthUI(null);
+    await refreshStatus();
+});
 
 const refreshStatus = async () => {
     try {
@@ -28,6 +155,9 @@ const refreshStatus = async () => {
         if (data.output_exists) {
             renderStatus.textContent = 'Final output is ready. Click download below.';
         }
+        if (data.authenticated && data.user) {
+            updateAuthUI(data.user);
+        }
     } catch (error) {
         uploadStatus.textContent = `Unable to refresh status: ${error.message}`;
     }
@@ -35,6 +165,11 @@ const refreshStatus = async () => {
 
 uploadForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!currentUser) {
+        openAuthModal(false, 'Please sign in before uploading clips.');
+        return;
+    }
+
     const filesInput = document.getElementById('clip-upload');
     const files = Array.from(filesInput.files);
     if (!files.length) {
@@ -61,6 +196,11 @@ uploadForm.addEventListener('submit', async (event) => {
 
 promptForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!currentUser) {
+        openAuthModal(false, 'Please sign in before generating and rendering.');
+        return;
+    }
+
     const promptValue = promptText.value.trim();
     if (!promptValue) {
         renderStatus.textContent = 'Enter an edit prompt before rendering.';
@@ -68,7 +208,7 @@ promptForm.addEventListener('submit', async (event) => {
     }
 
     const useResolve = document.getElementById('use-resolve').checked;
-    renderStatus.textContent = `Generating edit plan and rendering video${useResolve ? ' with DaVinci Resolve' : ''}… This may take a few minutes.`;
+    renderStatus.textContent = `Generating edit plan with Gemini & rendering video${useResolve ? ' with DaVinci Resolve' : ''}…`;
     planPreview.textContent = '';
     downloadButton.disabled = true;
 
@@ -93,4 +233,5 @@ downloadButton.addEventListener('click', () => {
     window.location.href = '/api/download/output';
 });
 
-refreshStatus();
+// Initialize on page load
+checkAuth().then(refreshStatus);

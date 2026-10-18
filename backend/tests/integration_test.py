@@ -104,7 +104,7 @@ def test_imports():
         from backend.services.indexing import build_index, load_index
         from backend.services.retrieval import retrieve_segments
         from backend.services.planner import plan_edit, validate_plan, create_fallback_plan
-        from backend.services.executor import render_plan, validate_plan_against_clips
+        from backend.services.executor import render_plan, render_with_resolve
         from backend.services.ffmpeg_runner import trim_clip, concat_clips, verify_output
         
         print('✓ All imports successful')

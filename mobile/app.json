@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "AI Video Editor",
+    "slug": "ai-video-editor",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "aivideoeditor",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#070b15"
+      }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow AI Video Editor to access your videos."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow AI Video Editor to save videos."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {}
+  }
+}

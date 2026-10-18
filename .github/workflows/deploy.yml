@@ -1,0 +1,122 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'ai-video-editor-512009' }}
+  REGION: asia-south1
+  SERVICE_NAME: ai-video-editor-backend
+  REPO_NAME: ai-video-editor
+  IMAGE_NAME: backend
+  BUCKET_NAME: ai-video-editor-data-512009
+
+jobs:
+  test:
+    name: Run Unit Tests & Typechecks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt psycopg[binary] pytest
+
+      - name: Run backend tests
+        run: |
+          pytest backend/tests
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: |
+          npm ci
+
+      - name: Typecheck mobile frontend
+        working-directory: mobile
+        run: |
+          npx tsc --noEmit
+
+  deploy:
+    name: Build, Push & Deploy to Cloud Run
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker authentication for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run (Zero-Cost SQLite on GCS Volume)
+        id: deploy
+        run: |
+          IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+          echo "Deploying to Cloud Run with image: ${IMAGE_URI}"
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --image "${IMAGE_URI}" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --memory 8Gi \
+            --cpu 4 \
+            --timeout 900 \
+            --concurrency 10 \
+            --execution-environment gen2 \
+            --add-volume "name=video-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}" \
+            --add-volume-mount "volume=video-data,mount-path=/app/data" \
+            --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET || 'prod-jwt-secret-key-editor-2026' }},DATABASE_URL=sqlite:////app/data/app.db"
+
+          # Retrieve deployed URL
+          SERVICE_URL=$(gcloud run services describe "${{ env.SERVICE_NAME }}" --region "${{ env.REGION }}" --format="value(status.url)")
+          echo "SERVICE_URL=${SERVICE_URL}" >> $GITHUB_ENV
+          echo "### 🚀 Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "Access the live web app and API at: **[${SERVICE_URL}](${SERVICE_URL})**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: SQLite (persisted at \`gs://${{ env.BUCKET_NAME }}/app.db\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Scale-to-zero**: Yes (\`--min-instances 0\`, ₹0 when idle)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hard limit**: Yes (\`--max-instances 1\`)" >> $GITHUB_STEP_SUMMARY

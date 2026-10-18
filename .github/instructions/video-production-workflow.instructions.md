@@ -70,6 +70,22 @@ This workspace uses specialized agents for different aspects of video production
 - "Compress for YouTube upload"
 - "Create streaming-ready formats"
 
+### 📱 **Mobile UI Developer Agent** (`/mobile-ui`)
+**Use for:**
+- Any work inside the `mobile/` folder (Expo / React Native)
+- Adding or modifying screens (Upload, Render, Library, Profile tabs)
+- Mobile navigation changes (bottom tab bar, stack screens)
+- Mobile auth flow (SecureStore, Zustand authStore, JWT Bearer token)
+- Camera roll video picker integration
+- Download and share of final video on device
+- Theme / styling updates to the mobile app
+
+**Examples:**
+- "Add a settings screen to the mobile app"
+- "Fix the auth token not persisting after app restart"
+- "Add upload progress bar to the Upload tab"
+- "Update the Library tab to show render job history"
+
 ## Workflow Integration
 
 For complex video projects, coordinate between agents:
@@ -78,6 +94,7 @@ For complex video projects, coordinate between agents:
 3. **Audio** → Sound design and mixing
 4. **Graphics** → Titles and visual elements
 5. **Compression** → Final delivery optimization
+6. **Mobile UI** → Update mobile app if needed
 
 ## Project Standards
 
