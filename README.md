@@ -1,502 +1,272 @@
-# AI Video Editing Tool (Local-First)
+# 🎬 AI Video Editor
 
-A fully offline AI-powered video editing tool that accepts multiple video clips and a natural language prompt to automatically generate rough-cut edited videos using local models.
+An intelligent, AI-powered video editing platform that takes multiple video clips and a natural language editing prompt to automatically generate edited videos with smart segment selection, pacing, and aspect ratio formatting.
 
-## Features
+Operates in **Dual Modes**:
+- 🌐 **Production Cloud Mode**: Hosted on **Google Cloud Run** with **Google Gemini 3.8 Flash**, persistent SQLite on Cloud Storage volume mounts, resilient chunked uploads, and an **Expo / React Native mobile app** — all with a **$0 idle zero-cost architecture** and **automated billing killswitch protections**.
+- 💻 **Local-First Mode**: Runs completely offline using local models (**Whisper**, **FAISS**, **Ollama / LLaMA 3**, and **FFmpeg**) with zero external API dependencies.
 
-- **Local-First:** Runs entirely offline using local models (Whisper, FAISS, Ollama)
-- **Multi-Clip Ingestion:** Process multiple video files and extract metadata
-- **AI Transcription:** Automatic speech-to-text with Whisper
-- **Semantic Retrieval:** Vector-based search to find relevant clip segments
-- **LLM Planning:** Generates structured edit plans using local LLMs (Ollama)
-- **FFmpeg Rendering:** Concatenates and renders final video with aspect ratio support
-- **DaVinci Resolve Integration:** Optional advanced rendering with professional color grading and effects
-- **CLI Interface:** Simple command-line workflow
+---
 
-## Quick Start
+## 🌐 Live Production Service
 
-### 1. Installation
+- **Live Web Application**: **[https://ai-video-editor-backend-379657549399.asia-south1.run.app](https://ai-video-editor-backend-379657549399.asia-south1.run.app)**
+- **Region**: `asia-south1` (Mumbai, India)
+- **Active Revision**: `ai-video-editor-backend-00004-jxd`
+- **Cost**: **$0.00 / month idle** (`--min-instances 0`, persistent SQLite on Cloud Storage volume mount)
 
-Clone the repository and install dependencies using Poetry and the root Moon workspace:
+---
 
-```bash
-git clone <repo_url>
-cd ai-video-editor
-poetry install
+## ✨ Key Features
+
+- **Prompt-to-Video Editing**: Describe the style, mood, or narrative in plain English (e.g. *"create a fast-paced vertical highlight reel with snappy transitions"*).
+- **Dual AI Planning**:
+  - **Cloud**: Google Gemini (`gemini-3.8-flash`) for rapid, structured JSON edit plan reasoning.
+  - **Local**: Ollama (`llama3` / `mistral`) for 100% offline workflow.
+- **Resilient Chunked Uploads**: High-speed chunked uploading (`/api/upload/chunk`) in 20 MB slices, safely bypassing Cloud Run's 32 MB request limit for large video files.
+- **Live 5-Step Progress Tracking**: Real-time progress monitoring across scanning, Whisper transcription, semantic retrieval, Gemini planning, and FFmpeg assembly.
+- **Tab Close / Reopen State Recovery**: Closing or refreshing the browser tab never loses render progress; the UI queries active state on load and resumes the 30-second polling cycle.
+- **HTTP 429 Prevention & High Concurrency**: Container concurrency tuned to 80 with non-overlapping 30-second client polling (`setTimeout`), eliminating Cloud Run request aborts.
+- **Local `/tmp` Scratch Acceleration**: Intermediate FFmpeg clips are trimmed in local container scratch storage, eliminating GCSFuse network latency and `OutOfOrderError` issues.
+- **Cross-Platform Mobile App**: Complete React Native & Expo application (`mobile/`) with camera roll picking, keychain auth, and native sharing.
+- **Zero-Cost Database Architecture**: SQLite database persisted directly on a Google Cloud Storage volume mount (`/app/data/app.db`), completely eliminating Cloud SQL charges.
+- **Multi-Tier Spend Protections**: Built-in Cloud Run spend cap + automated account-wide billing killswitch via Pub/Sub and Cloud Functions.
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients ["Client Layer"]
+        W["Web UI (Responsive HTML5 / CSS3 / Vanilla JS)"]
+        M["Mobile App (Expo / React Native 0.76)"]
+        C["CLI (Typer / Moon Workspace)"]
+    end
+
+    subgraph CloudRun ["Google Cloud Run (asia-south1, Max Instances: 1, Concurrency: 80)"]
+        FE["Google Frontend (GFE)"]
+        API["FastAPI Backend (backend/api/server.py)"]
+        
+        subgraph Services ["Core Pipeline Services"]
+            UP["Chunked Upload Service (/api/upload/chunk)"]
+            PROG["5-Step Render Progress Tracker"]
+            ING["Ingestion & Metadata Extraction (FFprobe)"]
+            TR["Speech-to-Text Transcription (Whisper AI)"]
+            EMB["Semantic Embedding (all-MiniLM-L6-v2)"]
+            VEC["Vector Store & Retrieval (FAISS)"]
+            PLAN["Edit Planner (Gemini 3.8 Flash / Ollama)"]
+            EXEC["Video Execution Engine (backend/services/executor.py)"]
+        end
+
+        subgraph LocalScratch ["Local Container RAM / Ephemeral Disk"]
+            TMP["/tmp/render_temp_* (High-Speed FFmpeg Segment Scratch)"]
+        end
+    end
+
+    subgraph Storage ["Persistent Storage (GCS Bucket: ai-video-editor-data-512009 via gcsfuse)"]
+        DB[("Persistent SQLite: /app/data/app.db")]
+        CLIPS["Clips: /app/data/clips/"]
+        TRANS["Transcripts: /app/data/transcripts/"]
+        OUT["Rendered Final Output: /app/data/outputs/final.mp4"]
+    end
+
+    subgraph ProtectionNet ["Automated Spend Protection Net"]
+        BUD["Billing Budget Alert (₹0.01 threshold)"]
+        PS["Pub/Sub: billing-killswitch-topic"]
+        CF["Cloud Function Gen2: billing-killswitch"]
+        BA["Billing Account: 0189C2-555DC9-CE0082"]
+        BUD --> PS --> CF -->|Unlink billing on exceed| BA
+    end
+
+    %% Routing
+    W -->|Chunked Upload & 30s Polling| FE
+    M -->|Chunked Upload & 30s Polling| FE
+    C -->|Local Processing| API
+    FE --> API
+    API --> UP --> CLIPS
+    API --> ING --> TR --> TRANS --> EMB --> VEC
+    VEC --> PLAN --> EXEC
+    CLIPS --> EXEC
+    EXEC -->|Fast Random-Access MP4 Writes| TMP
+    TMP -->|Concatenate Final Video| OUT
+    EXEC --> DB
+    PROG --> API
 ```
 
-If you want to use Moon tasks from the workspace root instead of calling Poetry directly:
+---
 
-```bash
-moon run backend:install
-```
+## 🚀 Quick Start
 
-This installs dependencies based on `pyproject.toml` and creates a local Poetry-managed virtual environment.
+### Option A: Use the Live Production Web App
+Directly access the live web application:
+👉 **[https://ai-video-editor-backend-379657549399.asia-south1.run.app](https://ai-video-editor-backend-379657549399.asia-south1.run.app)**
 
-If Poetry is not installed, follow the Poetry installation instructions at https://python-poetry.org/docs/#installation.
+1. Register or sign in via the user profile modal.
+2. Drag-and-drop or choose video clips (supports large files via chunked uploads).
+3. Enter your prompt (e.g. *"highlight the best moments and export vertical 9:16"*).
+4. Watch live 5-step progress and click **Download Final Video** when complete!
 
-### 2. Install System Dependencies
+---
 
-**Ollama (for LLM inference):**
-```bash
-# Visit https://ollama.ai and download the installer
-# Or on macOS: brew install ollama
-ollama pull llama3  # Pull the model
-ollama serve        # Start the Ollama server (keep running in background)
-```
+### Option B: Run the Mobile App (Expo / React Native)
 
-**FFmpeg:**
-```bash
-# macOS
-brew install ffmpeg
-
-# Ubuntu/Debian
-sudo apt-get install ffmpeg
-
-# Windows
-choco install ffmpeg
-```
-
-**DaVinci Resolve (Optional for Advanced Rendering):**
-```bash
-# Install DaVinci Resolve Studio (paid version required for command-line rendering)
-# Download from: https://www.blackmagicdesign.com/products/davinciresolve
-
-# The web UI includes a checkbox to use DaVinci Resolve for final rendering
-# This provides professional color grading, effects, and higher quality output
-```
-
-### 3. Prepare Your Video Clips
-
-Place video clips in `data/clips/`:
-```bash
-mkdir -p data/clips
-cp your_videos/*.mp4 data/clips/
-```
-
-## Web UI (New)
-
-Start the web interface from the repository root using Poetry:
-
-```bash
-poetry run uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8000
-```
-
-Or use Moon:
-
-```bash
-moon run backend:web
-```
-
-Then open `http://localhost:8000` in your browser.
-
-If you need to pass CLI arguments through the root task, use:
-
-```bash
-moon run backend:dev -- ingest ./data/clips/
-```
-
-## Mobile App (Expo / React Native)
-
-Cross-platform iOS + Android app inside `mobile/` with a 4-tab bottom navigation bar.
-
-### Prerequisites
-
-- [Node.js 20+](https://nodejs.org/)
-- [Expo Go](https://expo.dev/go) app installed on your iOS or Android device (or use an emulator)
-- Backend running (see Web UI section above)
-
-### Setup
+The mobile application is located in `mobile/`:
 
 ```bash
 cd mobile
-cp .env.example .env
-# Edit .env — set EXPO_PUBLIC_API_BASE_URL:
-#   iOS Simulator:     http://localhost:8000
-#   Android Emulator:  http://10.0.2.2:8000
-#   Physical device:   http://<your-LAN-IP>:8000
 
+# 1. Install dependencies
 npm install
+
+# 2. Configure endpoint in .env
+cp .env.example .env
+# Set: EXPO_PUBLIC_API_BASE_URL=https://ai-video-editor-backend-379657549399.asia-south1.run.app
+
+# 3. Start Expo development server
 npx expo start
 ```
 
-Scan the QR code with **Expo Go** on your device, or press `i` (iOS Simulator) / `a` (Android Emulator).
-
-Or use Moon from the repo root:
-
-```bash
-moon run mobile:start
-```
-
-### Tabs
-
-| Tab | Purpose |
-|---|---|
-| 🎬 **Upload** | Pick videos from camera roll → upload to backend |
-| ✨ **Render** | Enter a prompt, toggle options, generate edit plan & render |
-| 📁 **Library** | View uploaded clips, download & share the final video |
-| 👤 **Profile** | Sign in / register / log out, view server info |
+- Scan the QR code using the **Expo Go** app on your iPhone or Android device.
+- Or press `i` for iOS Simulator or `a` for Android Emulator.
 
 ---
 
-## Cloud Deployment & CI/CD (Google Cloud Platform)
+### Option C: Run the Full Stack Locally
 
-The application is cloud-ready and deploys to **Google Cloud Run** with persistent storage and database in **Google Cloud Storage (GCS)**, completely avoiding cloud database costs ($0/mo), with a **hard spending cap at ₹1.00**.
+#### 1. System Requirements
+- Python 3.12+ (or 3.13)
+- FFmpeg (`brew install ffmpeg` or `sudo apt-get install ffmpeg`)
+- Ollama (optional, for local LLM inference: `ollama run llama3`)
 
-### Target Architecture
-- **GCP Project:** `ai-video-editor-512009`
-- **Region:** `asia-south1` (Mumbai)
-- **Container Registry:** Artifact Registry (`asia-south1-docker.pkg.dev`)
-- **Volume Mount:** GCS Bucket `ai-video-editor-data-512009` mounted at `/app/data`
-- **Database:** Persistent SQLite at `/app/data/app.db` on GCS volume ($0 database charges)
-- **Scaling Limits:** `--min-instances 0` (scales to zero when idle = ₹0) & `--max-instances 1` (hard instance ceiling)
-
-### 1. One-Time GCP Provisioning
-
-Run the automated provisioning script with your authenticated `gcloud` CLI:
-
+#### 2. Install & Start Backend
 ```bash
-# 1. Log in to gcloud
-gcloud auth login
+# Clone the repository
+git clone https://github.com/worrzell/ai-video-editor.git
+cd ai-video-editor
 
-# 2. Run automated setup (takes ~30 seconds)
-bash scripts/setup-gcp.sh
+# Install dependencies via Poetry or pip
+pip install -r backend/requirements.txt
 
-# 3. (Optional) Arm the ₹1 Automated Killswitch
-bash scripts/setup-killswitch.sh
+# Start the FastAPI server
+uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8000
 ```
-
-### 2. Configure GitHub Secrets
-
-Go to your repository on GitHub: **Settings → Secrets and variables → Actions** and add:
-
-| Secret Name | Value |
-|---|---|
-| `GCP_PROJECT_ID` | `ai-video-editor-512009` |
-| `GCP_SA_KEY` | Contents of `scripts/gcp-sa-key.json` |
-| `GEMINI_API_KEY` | Your Google AI Studio Gemini API Key |
-
-### 3. Continuous Deployment
-
-Once secrets are set, **every push to `main`** triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
-1. Runs automated tests (`pytest`) and typecheck (`tsc`).
-2. Builds and pushes the Docker container to Artifact Registry.
-3. Deploys the revision to Cloud Run with GCS volume mount (persisting SQLite and video clips).
-4. Outputs the live HTTPS URL in the GitHub Actions summary.
-
-### 4. Cost Protection Controls (Project & Org/Account Level)
-
-#### A. Native Cloud Run Spend Cap (Service Level)
-Google Cloud supports native **Spend Caps on Cloud Run**:
-1. Go to **[Cloud Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets)**.
-2. Create/edit budget for `ai-video-editor-512009` scoped to **Cloud Run**.
-3. Set your monthly limit (e.g. ₹50 or ₹100 / $1).
-4. Select **"Enable Spend Cap"** / **"Pause service when limit is reached"**.
-5. When the limit is hit, Cloud Run invocations are automatically paused non-destructively, without affecting your storage data.
-
-#### B. Org / Account-Wide Overall Spend Limit
-To protect across **all current and future projects**:
-1. In [Cloud Billing Budgets](https://console.cloud.google.com/billing/budgets), create a budget with **Scope: All projects** and **Services: All services**.
-2. Set target amount (e.g. ₹100 or ₹500).
-3. Connect notification to Pub/Sub topic `projects/ai-video-editor-512009/topics/billing-killswitch-topic`.
-
-#### C. Automated Billing Killswitch (Nuclear Fallback)
-Deploy the automated killswitch:
-```bash
-# Sets up Pub/Sub topic and Cloud Function (supports single project or all projects)
-bash scripts/setup-killswitch.sh
-```
-If spending exceeds your budget threshold, the function immediately unlinks billing across projects. To re-enable billing later:
-```bash
-# Re-link a single project:
-bash scripts/relink-billing.sh ai-video-editor-512009 <YOUR_BILLING_ACCOUNT_ID>
-
-# Or re-link ALL projects under your billing account:
-bash scripts/relink-billing.sh --all <YOUR_BILLING_ACCOUNT_ID>
-```
+Open **`http://localhost:8000`** in your browser.
 
 ---
 
+## 🛠️ CLI Workflow (Local-First Mode)
 
-## Complete Workflow
-
-### Phase 1: Ingest & Transcribe
+For terminal power users and batch video pipelines, use the built-in CLI:
 
 ```bash
-# Scan and extract metadata from video clips
+# 1. Scan and ingest clips
 python backend/main.py ingest ./data/clips/
 
-# Transcribe all clips using Whisper
+# 2. Transcribe speech using Whisper AI
 python backend/main.py process --whisper-model small
-```
 
-**Output:**
-- `data/clips_manifest.json` — metadata for all clips
-- `data/transcripts/` — JSON files with segment-level transcripts
-
-### Phase 2: Build Index & Search
-
-```bash
-# Build FAISS index from transcripts
+# 3. Index segment embeddings into FAISS
 python backend/main.py index --embedding-model all-MiniLM-L6-v2
 
-# (Optional) Search for specific keywords
-python backend/main.py search "create a highlight reel" --top-k 5
+# 4. Generate structured edit plan with LLM
+python backend/main.py plan "create a dynamic highlight reel" --ollama-model llama3
+
+# 5. Render final video via FFmpeg
+python backend/main.py render --output-path ./data/outputs/final.mp4
 ```
 
-**Output:**
-- `data/embeddings.index` — FAISS search index
-- `data/embeddings.meta.json` — segment metadata and embeddings
+---
 
-### Phase 3: Generate Edit Plan
+## 📡 REST API Reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Create a new user account with hashed password |
+| `POST` | `/api/auth/login` | Authenticate user; returns JWT token & sets HttpOnly cookie |
+| `POST` | `/api/auth/logout` | Clear authentication session |
+| `GET` | `/api/auth/me` | Fetch active user profile and database status |
+| `GET` | `/api/status` | List uploaded clips, check output status, and active model |
+| `POST` | `/api/upload/chunk` | Upload video file in resilient 20 MB chunks |
+| `POST` | `/api/render` | Trigger 5-step video generation & rendering pipeline |
+| `GET` | `/api/render/progress` | Poll active render step, percent, and status message |
+| `GET` | `/api/download/output` | Download the final rendered video file |
+| `GET` | `/api/clips/{clip_name}` | Stream an uploaded raw clip |
+
+---
+
+## 🛡️ Cloud Deployment & Zero-Cost Architecture
+
+The production environment on **Google Cloud Platform** is engineered to remain **$0.00 / month** when idle while strictly enforcing budget ceilings:
+
+### 1. Scaling & Concurrency Safeguards
+- `--min-instances 0`: Scales down to zero instances when traffic stops, incurring zero compute cost.
+- `--max-instances 1`: Strict instance ceiling prevents horizontal auto-scaling surges.
+- `--concurrency 80`: High container concurrency accommodates static assets and 30-second progress polls while rendering, preventing HTTP 429 drops.
+
+### 2. Zero-Cost Persistent Database
+- Replaces expensive Cloud SQL instances with a persistent **SQLite** database file stored directly on the Google Cloud Storage bucket mount (`/app/data/app.db`).
+- Zero database hourly fees, zero VPC connectors, zero password management overhead.
+
+### 3. Multi-Tier Spend Protections
+- **Layer 1: Native Cloud Run Spend Cap**: Pauses invocations non-destructively when monthly budget is reached without affecting storage data.
+- **Layer 2: Automated Billing Killswitch**: Cloud Function Gen2 (`billing-killswitch`) automatically unlinks the GCP billing account if spend exceeds ₹0.01.
+- **1-Command Recovery**:
+  ```bash
+  bash scripts/relink-billing.sh --all <BILLING_ACCOUNT_ID>
+  ```
+
+---
+
+## 🧪 Testing & Code Quality
+
+Run the test suites:
 
 ```bash
-# Use LLM to generate edit plan from natural language prompt
-python backend/main.py plan "create a cinematic highlight reel with fast pacing"
+# Backend unit & integration tests
+pytest backend/tests
+
+# Mobile frontend typechecking
+cd mobile && npx tsc --noEmit
 ```
 
-**Output:**
-- `data/edit_plan.json` — structured JSON plan with clip timeline and style
+---
 
-**Example Plan:**
-```json
-{
-  "timeline": [
-    {"clip_id": "clip_001", "start": 12.3, "end": 25.0, "reason": "exciting moment"},
-    {"clip_id": "clip_002", "start": 5.1, "end": 18.5, "reason": "key highlight"}
-  ],
-  "style": {
-    "pace": "fast",
-    "captions": false,
-    "aspect_ratio": "16:9"
-  }
-}
-```
-
-### Phase 4: Render Video
-
-```bash
-# Render the final video
-python backend/main.py render
-
-# Or with custom output path
-python backend/main.py render --output-path ./my_video.mp4
-```
-
-**Output:**
-- `data/outputs/final.mp4` — final edited video
-
-## CLI Reference
-
-### ingest
-Scan and extract metadata from video clips.
-```bash
-python backend/main.py ingest ./data/clips/
-```
-
-### process
-Transcribe clips using Whisper.
-```bash
-python backend/main.py process \
-  --clips-dir ./data/clips/ \
-  --transcripts-dir ./data/transcripts/ \
-  --whisper-model small \
-  --language en
-```
-
-### index
-Build FAISS index from transcripts.
-```bash
-python backend/main.py index \
-  --transcripts-dir ./data/transcripts/ \
-  --embedding-model all-MiniLM-L6-v2
-```
-
-### search
-Search the FAISS index.
-```bash
-python backend/main.py search "your prompt here" \
-  --top-k 5 \
-  --embedding-model all-MiniLM-L6-v2
-```
-
-### plan
-Generate edit plan using LLM.
-```bash
-python backend/main.py plan "your edit request" \
-  --top-k 5 \
-  --embedding-model all-MiniLM-L6-v2 \
-  --ollama-model llama3
-```
-
-### render
-Render video from edit plan.
-```bash
-python backend/main.py render \
-  --edit-plan-path ./data/edit_plan.json \
-  --clips-dir ./data/clips/ \
-  --output-path ./data/outputs/final.mp4
-```
-
-## Architecture
-
-See the technical specs in the `spec/` folder:
-- [01-core-architecture.md](spec/01-core-architecture.md) — System design
-- [02-architecture-diagram.md](spec/02-architecture-diagram.md) — Visual architecture with Mermaid
-- [03-api-dataflow.md](spec/03-api-dataflow.md) — API and data flow
-- Phases 1-5 implementation specs
-
-## Troubleshooting
-
-### "Ollama model not found"
-Make sure Ollama is running and the model is downloaded:
-```bash
-ollama serve &
-ollama pull llama3
-```
-
-### "FFmpeg not found"
-Install FFmpeg using your package manager (see Installation section).
-
-### "No transcripts found"
-Run the `process` command first to generate transcripts from clips.
-
-### "Whisper model too slow"
-Use a smaller model:
-```bash
-python backend/main.py process --whisper-model tiny
-```
-
-Options: `tiny`, `base`, `small`, `medium`, `large`
-
-### "FAISS index not found"
-Run the `index` command to build the index from transcripts.
-
-## Performance Tips
-
-- **Faster Transcription:** Use `tiny` or `base` Whisper model
-- **Faster Embedding:** Use a smaller embedding model (e.g., `all-MiniLM-L6-v2`)
-- **Batch Processing:** Process multiple clips together with `process` command
-- **Parallel Search:** FAISS searches are fast for 1k-10k segments
-
-## Development
-
-### Install dependencies
-```bash
-poetry install
-```
-
-### Running Tests
-```bash
-poetry run pytest backend/tests
-# or
-moon run backend:test
-```
-
-### Code Formatting
-```bash
-poetry run black backend/
-poetry run flake8 backend/
-# or
-moon run backend:format
-moon run backend:lint
-```
-
-### Running CLI commands through Poetry
-```bash
-poetry run python backend/main.py ingest ./data/clips/
-poetry run python backend/main.py process --whisper-model small
-```
-
-### Running CLI commands through Moon
-```bash
-moon run backend:dev -- ingest ./data/clips/
-moon run backend:dev -- process --whisper-model small
-```
-
-## Project Structure
+## 📁 Repository Structure
 
 ```
 ai-video-editor/
 ├── backend/
-│   ├── main.py                 # CLI entry point
+│   ├── main.py                 # CLI entry point (Typer)
 │   ├── requirements.txt         # Python dependencies
+│   ├── api/
+│   │   ├── server.py           # FastAPI routes & progress state
+│   │   └── static/             # Responsive Web UI (HTML, CSS, JS)
+│   ├── auth/                   # JWT auth, security, and SQLite user records
 │   ├── services/
-│   │   ├── ingestion.py        # Clip ingestion
-│   │   ├── transcription.py    # Whisper integration
-│   │   ├── embedding.py        # Embedding provider
-│   │   ├── indexing.py         # FAISS indexing
-│   │   ├── retrieval.py        # Semantic search
-│   │   ├── planner.py          # LLM planning
-│   │   ├── executor.py         # Video rendering
-│   │   └── ffmpeg_runner.py    # FFmpeg operations
-│   ├── db/
-│   │   └── vector_store.py     # FAISS wrapper
+│   │   ├── ingestion.py        # Metadata extraction via FFprobe
+│   │   ├── transcription.py    # OpenAI Whisper speech-to-text
+│   │   ├── embedding.py        # Sentence-transformers embedding provider
+│   │   ├── indexing.py         # FAISS vector store indexer
+│   │   ├── retrieval.py        # Semantic prompt segment search
+│   │   ├── planner.py          # Gemini 3.8 Flash & Ollama edit planner
+│   │   ├── executor.py         # FFmpeg video assembly (uses /tmp scratch)
+│   │   └── ffmpeg_runner.py    # FFmpeg trimming & concatenation
 │   ├── models/
-│   │   └── edit_plan.py        # Pydantic schemas
-│   └── utils/
-├── data/
-│   ├── clips/                  # Input video clips
-│   ├── transcripts/            # Generated transcripts
-│   ├── outputs/                # Final rendered video
-│   ├── clips_manifest.json     # Metadata manifest
-│   ├── embeddings.index        # FAISS index
-│   └── edit_plan.json          # Generated plan
-├── spec/
-│   ├── 01-core-architecture.md
-│   ├── 02-architecture-diagram.md
-│   ├── 03-api-dataflow.md
-│   ├── 04-phase1-ingestion-transcription.md
-│   ├── 05-phase2-embeddings-retrieval.md
-│   ├── 06-phase3-llm-planning.md
-│   ├── 07-phase4-rendering.md
-│   └── 08-phase5-polish-integration.md
-└── README.md
+│   │   └── edit_plan.py        # Pydantic schemas (EditPlan, ClipSegment)
+│   └── tests/                  # Pytest test suite
+├── mobile/                     # React Native / Expo mobile app
+│   ├── App.tsx                 # Tab navigation root
+│   └── src/                    # Screens (Upload, Render, Library, Profile)
+├── spec/                       # Complete architectural specifications
+├── scripts/                    # GCP deployment, killswitch, and recovery scripts
+├── .github/workflows/          # Continuous deployment (deploy.yml)
+├── Dockerfile                  # Cloud Run multi-stage Docker container
+└── README.md                   # Repository documentation
 ```
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Language | Python 3.12+ |
-| CLI Framework | Typer |
-| Transcription | OpenAI Whisper |
-| Embeddings | sentence-transformers |
-| Vector DB | FAISS |
-| LLM Inference | Ollama |
-| Video Processing | FFmpeg |
-| Data Validation | Pydantic |
-
-## Future Enhancements
-
-- [ ] Web UI for interactive editing
-- [ ] Real-time preview of edits
-- [ ] Music auto-selection and sync
-- [ ] Automatic captions and overlays
-- [ ] Face detection for auto-framing
-- [ ] Emotion-based clip selection
-- [ ] Batch rendering
-- [ ] Edit plan templates
-
-## Contributing
-
-Contributions welcome! Please ensure:
-1. Code follows existing style
-2. All specs are up-to-date
-3. Tests pass
-4. Documentation is clear
-
-## License
-
-MIT License — See LICENSE file for details.
-
-## Support
-
-For issues or questions:
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review the spec files in `spec/` folder
-3. Open an issue with detailed logs
 
 ---
 
-**Made with ❤️ for local-first AI video editing**
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
