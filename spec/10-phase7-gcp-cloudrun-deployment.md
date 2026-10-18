@@ -1,8 +1,8 @@
-# Implementation Spec: Phase 7 — GCP Cloud Run Deployment & GitHub Actions CI/CD
+# Implementation Spec: Phase 7 — Zero-Cost GCP Cloud Run Deployment & Automated Killswitch
 
 ## Objective
 
-Deploy the AI Video Editor application (FastAPI backend, static web UI, FFmpeg video processing pipeline, Whisper transcription, and Gemini planning) to Google Cloud Platform under project **`ai-video-editor-512009`** in region **`asia-south1`** (Mumbai, India). Automate the testing, container building, and deployment process via GitHub Actions CI/CD triggered on push to `main`.
+Deploy the AI Video Editor application to Google Cloud Platform under project **`ai-video-editor-512009`** in region **`asia-south1`** (Mumbai, India) with **zero cloud database cost** and a **hard spending cap at ₹1.00**.
 
 ---
 
@@ -20,9 +20,15 @@ GitHub Actions (push to main)
    │
    └─► 4. Deploy Revision to Google Cloud Run (asia-south1)
           ├── Compute: 4 vCPU, 8GiB RAM, timeout 900s
-          ├── Persistent Storage: Cloud Storage Bucket (ai-video-editor-data-512009) mounted to /app/data
-          ├── Database: Google Cloud SQL (ai-video-editor-db) attached via Unix socket
+          ├── Idle Cost: ₹0 (--min-instances 0, scales to zero when idle)
+          ├── Traffic Spike Cap: --max-instances 1 (never scales past 1 instance)
+          ├── Persistent Database: SQLite (/app/data/app.db) on GCS Volume ($0 cost)
+          ├── Persistent Media: GCS Bucket (ai-video-editor-data-512009) mounted to /app/data
           └── Public HTTPS endpoint: https://<service-url>.run.app
+
+Safety Net:
+   Spend > ₹0.01 ──► Budget Alert ──► Pub/Sub ──► Cloud Function (scripts/killswitch)
+   ──► Unlinks Billing (Halts all services immediately)
 ```
 
 ---
@@ -30,80 +36,61 @@ GitHub Actions (push to main)
 ## Infrastructure Components
 
 ### 1. Google Cloud Run (`ai-video-editor-backend`)
-- **Execution Environment:** Gen2 (Second Generation) — required for mounting Cloud Storage buckets directly as filesystem volumes.
+- **Execution Environment:** Gen2 (Second Generation) for Cloud Storage FUSE volume mount.
 - **Port:** Dynamically bound to `${PORT:-8080}` via entrypoint `sh -c "exec uvicorn backend.api.server:app --host 0.0.0.0 --port ${PORT:-8080}"`.
-- **Resources:**
-  - CPU: 4 vCPU
-  - Memory: 8 GiB
-  - Max Request Timeout: 900 seconds (15 minutes for long video rendering)
-  - Concurrency: 10 requests per container instance
-- **Authentication:** Publicly accessible (`--allow-unauthenticated`) for the web UI and mobile REST API.
+- **Scaling Limits:**
+  - `--min-instances 0`: Zero cost when idle.
+  - `--max-instances 1`: Hard ceiling preventing instance multiplication.
+- **Resources:** 4 vCPU, 8 GiB RAM, 900s timeout.
 
-### 2. Google Cloud Storage Bucket (`ai-video-editor-data-512009`)
-- Mounted into container path `/app/data`.
-- Automatically persists:
-  - Raw video clips (`/app/data/clips/`)
-  - Transcripts (`/app/data/transcripts/`)
-  - Rendered output videos (`/app/data/outputs/final.mp4`)
-  - FAISS index & metadata (`/app/data/embeddings.*`)
+### 2. Persistent Storage & Database (GCS Volume Mount)
+- **Bucket:** `ai-video-editor-data-512009` mounted at `/app/data`.
+- **Database:** SQLite file at `/app/data/app.db`.
+  - Persists across container revisions and scale-to-zero cycles.
+  - Zero cloud database charges ($0/month).
+  - No VPC connectors or database passwords required.
+- **Media:** Raw clips, transcripts, and final rendered videos persist in the bucket.
 
-### 3. Google Cloud SQL (`ai-video-editor-db`)
-- **Engine:** PostgreSQL 16
-- **Tier:** `db-f1-micro` (cost-optimized for hobby/dev projects)
-- **Database:** `ai_video_editor`
-- **User:** `editor_app`
-- **Connection:** Cloud Run connects using the Cloud SQL Auth proxy Unix socket:
-  `postgresql://editor_app:<password>@/ai_video_editor?host=/cloudsql/ai-video-editor-512009:asia-south1:ai-video-editor-db`
+### 3. Cost Protection Controls (Dual Protection)
 
-### 4. Google Artifact Registry (`ai-video-editor`)
-- **Format:** Docker
-- **Location:** `asia-south1`
-- **Repository URI:** `asia-south1-docker.pkg.dev/ai-video-editor-512009/ai-video-editor/backend`
+#### A. Native Cloud Run Spend Cap (Built-in GCP Feature)
+- Scoped to service `ai-video-editor-backend` in project `ai-video-editor-512009`.
+- When monthly spend reaches 100% of the target budget (e.g. ₹50 or ₹100), Google Cloud **automatically pauses Cloud Run invocations** and prevents further cost accrual.
+- Non-destructive: Does not unlink project billing or affect GCS bucket data. Resets automatically on the next billing cycle or via console unpause.
+
+#### B. Automated Billing Killswitch (Pub/Sub + Cloud Function Fallback)
+- **Topic:** `billing-killswitch-topic`
+- **Function:** `billing-killswitch` (Gen2 Python 3.11)
+- **Trigger:** Cloud Billing Budget alert for project `ai-video-editor-512009` with target ₹1.00.
+- **Action:** If spend > ₹0.01, unlinks billing account via Google Cloud Billing API as a nuclear safety brake.
+- **Recovery:** `bash scripts/relink-billing.sh <BILLING_ACCOUNT_ID>`.
 
 ---
 
 ## GitHub Secrets Configuration
 
-The following repository secrets must be configured in GitHub at `Settings -> Secrets and variables -> Actions`:
+Only 3 secrets required in GitHub (`Settings → Secrets and variables → Actions`):
 
 | Secret Name | Description | Example / Source |
 |---|---|---|
 | `GCP_PROJECT_ID` | GCP Project ID | `ai-video-editor-512009` |
 | `GCP_SA_KEY` | Service Account JSON Private Key | Content of `scripts/gcp-sa-key.json` |
 | `GEMINI_API_KEY` | Google Gemini API Key | From Google AI Studio |
-| `AUTH_JWT_SECRET` | Secret key for JWT signing | 64-char random hex string |
-| `DB_PASSWORD` | Password for PostgreSQL user `editor_app` | Generated by `setup-gcp.sh` |
-| `DB_CONNECTION_NAME` | Cloud SQL instance connection string | `ai-video-editor-512009:asia-south1:ai-video-editor-db` |
 
 ---
 
 ## Setup & Deployment Instructions
 
-### One-Time Setup:
 ```bash
 # 1. Log in to gcloud CLI
 gcloud auth login
 
-# 2. Run the automated provisioning script
+# 2. Run automated infrastructure setup
 bash scripts/setup-gcp.sh
 
-# 3. Add the output secrets to GitHub Repository Secrets
+# 3. Arm the ₹1 Automated Killswitch
+bash scripts/setup-killswitch.sh
+
+# 4. Add the 3 secrets to GitHub Repository Secrets
+# 5. Push to main — GitHub Actions builds and deploys to Cloud Run!
 ```
-
-### Continuous Deployment:
-Any commit pushed to `main` triggers `.github/workflows/deploy.yml`:
-1. Runs unit tests and mobile typechecking.
-2. Builds and pushes the Docker container image to Artifact Registry.
-3. Deploys the revision to Cloud Run with GCS volume mount and Cloud SQL connection.
-4. Outputs the live URL in the GitHub Actions summary.
-
----
-
-## Success Criteria
-
-1. `bash scripts/setup-gcp.sh` successfully provisions all GCP resources without errors.
-2. Push to `main` triggers the GitHub Actions workflow and succeeds across all jobs.
-3. Accessing the Cloud Run URL opens the AI Video Editor web UI over HTTPS.
-4. Uploading a video persists the clip into the GCS bucket.
-5. Rendered video can be downloaded from the Cloud Run URL.
-6. The Expo mobile app can target the Cloud Run URL in `mobile/.env`.

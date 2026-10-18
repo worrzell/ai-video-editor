@@ -90,47 +90,33 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Cloud Run (Zero-Cost SQLite on GCS Volume)
         id: deploy
         run: |
           IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          
-          # Prepare database configuration
-          DB_CONN="${{ secrets.DB_CONNECTION_NAME }}"
-          DB_PASS="${{ secrets.DB_PASSWORD }}"
-          
-          # Assemble Cloud Run deploy flags
-          DEPLOY_FLAGS=(
-            --image "${IMAGE_URI}"
-            --region "${{ env.REGION }}"
-            --platform managed
-            --allow-unauthenticated
-            --memory 8Gi
-            --cpu 4
-            --timeout 900
-            --concurrency 10
-            --execution-environment gen2
-            --add-volume "name=video-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}"
-            --add-volume-mount "volume=video-data,mount-path=/app/data"
-          )
-          
-          # Add Cloud SQL proxy instance if secret is configured
-          if [ -n "${DB_CONN}" ] && [ -n "${DB_PASS}" ]; then
-            DEPLOY_FLAGS+=(
-              --add-cloudsql-instances "${DB_CONN}"
-              --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET }},DATABASE_URL=postgresql://editor_app:${DB_PASS}@/ai_video_editor?host=/cloudsql/${DB_CONN}"
-            )
-          else
-            DEPLOY_FLAGS+=(
-              --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET }}"
-            )
-          fi
 
           echo "Deploying to Cloud Run with image: ${IMAGE_URI}"
-          gcloud run deploy "${{ env.SERVICE_NAME }}" "${DEPLOY_FLAGS[@]}"
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --image "${IMAGE_URI}" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 1 \
+            --memory 8Gi \
+            --cpu 4 \
+            --timeout 900 \
+            --concurrency 10 \
+            --execution-environment gen2 \
+            --add-volume "name=video-data,type=cloud-storage,bucket=${{ env.BUCKET_NAME }}" \
+            --add-volume-mount "volume=video-data,mount-path=/app/data" \
+            --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},AUTH_JWT_SECRET=${{ secrets.AUTH_JWT_SECRET || 'prod-jwt-secret-key-editor-2026' }},DATABASE_URL=sqlite:////app/data/app.db"
 
           # Retrieve deployed URL
           SERVICE_URL=$(gcloud run services describe "${{ env.SERVICE_NAME }}" --region "${{ env.REGION }}" --format="value(status.url)")
           echo "SERVICE_URL=${SERVICE_URL}" >> $GITHUB_ENV
           echo "### 🚀 Deployed Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "Access the live web app and API at: **[${SERVICE_URL}](${SERVICE_URL})**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database**: SQLite (persisted at \`gs://${{ env.BUCKET_NAME }}/app.db\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Scale-to-zero**: Yes (\`--min-instances 0\`, ₹0 when idle)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hard limit**: Yes (\`--max-instances 1\`)" >> $GITHUB_STEP_SUMMARY

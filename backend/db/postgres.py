@@ -75,17 +75,14 @@ _active_db_type = "unknown"
 
 
 def get_default_db_url() -> str:
-    """Get database URL from environment or construct unix-socket connection for PostgreSQL."""
+    """Get database URL from environment or default to persistent SQLite."""
     env_url = os.getenv("DATABASE_URL")
     if env_url:
         return env_url
 
-    # Check unix domain socket for postgres
-    if os.path.exists("/var/run/postgresql"):
-        user = os.getenv("USER", "worrzell")
-        return f"postgresql://{user}@/ai_video_editor?host=/var/run/postgresql"
-
-    return "postgresql://localhost:5432/ai_video_editor"
+    data_dir = Path(__file__).resolve().parents[2] / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{data_dir / 'app.db'}"
 
 
 def init_postgres(db_url: Optional[str] = None):
@@ -96,7 +93,8 @@ def init_postgres(db_url: Optional[str] = None):
     logger.info(f"Connecting to database: {url.split('@')[-1] if '@' in url else url}")
 
     try:
-        engine = create_engine(url, pool_pre_ping=True)
+        connect_args = {"check_same_thread": False} if "sqlite" in url else {}
+        engine = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
         Base.metadata.create_all(engine)
         _engine = engine
         _session_factory = sessionmaker(bind=_engine)
@@ -105,14 +103,12 @@ def init_postgres(db_url: Optional[str] = None):
     except Exception as exc:
         logger.warning(
             f"Failed to connect to primary database ({exc}). "
-            "To grant full PostgreSQL access, run:\n"
-            "  sudo -u postgres createdb -O worrzell ai_video_editor\n"
             "Falling back to local SQLite database..."
         )
         data_dir = Path(__file__).resolve().parents[2] / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         sqlite_url = f"sqlite:///{data_dir / 'app.db'}"
-        _engine = create_engine(sqlite_url, pool_pre_ping=True)
+        _engine = create_engine(sqlite_url, pool_pre_ping=True, connect_args={"check_same_thread": False})
         Base.metadata.create_all(_engine)
         _session_factory = sessionmaker(bind=_engine)
         _active_db_type = "sqlite"

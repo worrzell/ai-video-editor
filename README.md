@@ -141,27 +141,30 @@ moon run mobile:start
 
 ## Cloud Deployment & CI/CD (Google Cloud Platform)
 
-The application is cloud-ready and deploys to **Google Cloud Run** with persistent storage in **Google Cloud Storage (GCS)** and managed database in **Cloud SQL (PostgreSQL 16)**.
+The application is cloud-ready and deploys to **Google Cloud Run** with persistent storage and database in **Google Cloud Storage (GCS)**, completely avoiding cloud database costs ($0/mo), with a **hard spending cap at ₹1.00**.
 
-### Target Setup
+### Target Architecture
 - **GCP Project:** `ai-video-editor-512009`
 - **Region:** `asia-south1` (Mumbai)
 - **Container Registry:** Artifact Registry (`asia-south1-docker.pkg.dev`)
 - **Volume Mount:** GCS Bucket `ai-video-editor-data-512009` mounted at `/app/data`
+- **Database:** Persistent SQLite at `/app/data/app.db` on GCS volume ($0 database charges)
+- **Scaling Limits:** `--min-instances 0` (scales to zero when idle = ₹0) & `--max-instances 1` (hard instance ceiling)
 
 ### 1. One-Time GCP Provisioning
 
 Run the automated provisioning script with your authenticated `gcloud` CLI:
 
 ```bash
-# 1. Log in to gcloud (if not already logged in)
+# 1. Log in to gcloud
 gcloud auth login
 
-# 2. Run automated setup
+# 2. Run automated setup (takes ~30 seconds)
 bash scripts/setup-gcp.sh
-```
 
-The script enables required APIs, creates the Artifact Registry repository, provisions the GCS bucket, configures Cloud SQL PostgreSQL, and generates a deployment Service Account key at `scripts/gcp-sa-key.json`.
+# 3. (Optional) Arm the ₹1 Automated Killswitch
+bash scripts/setup-killswitch.sh
+```
 
 ### 2. Configure GitHub Secrets
 
@@ -171,18 +174,35 @@ Go to your repository on GitHub: **Settings → Secrets and variables → Action
 |---|---|
 | `GCP_PROJECT_ID` | `ai-video-editor-512009` |
 | `GCP_SA_KEY` | Contents of `scripts/gcp-sa-key.json` |
-| `GEMINI_API_KEY` | Your Google Gemini API Key |
-| `AUTH_JWT_SECRET` | 64-char random string (e.g. from `openssl rand -hex 32`) |
-| `DB_PASSWORD` | PostgreSQL password output by `setup-gcp.sh` |
-| `DB_CONNECTION_NAME` | Connection name (e.g. `ai-video-editor-512009:asia-south1:ai-video-editor-db`) |
+| `GEMINI_API_KEY` | Your Google AI Studio Gemini API Key |
 
 ### 3. Continuous Deployment
 
 Once secrets are set, **every push to `main`** triggers [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
 1. Runs automated tests (`pytest`) and typecheck (`tsc`).
 2. Builds and pushes the Docker container to Artifact Registry.
-3. Deploys the revision to Cloud Run with GCS volume mount and Cloud SQL connection.
+3. Deploys the revision to Cloud Run with GCS volume mount (persisting SQLite and video clips).
 4. Outputs the live HTTPS URL in the GitHub Actions summary.
+
+### 4. Dual Cost Protection Controls
+
+#### A. Native Cloud Run Spend Cap (Recommended)
+Google Cloud supports native **Spend Caps on Cloud Run**:
+1. Go to **[Cloud Billing → Budgets & alerts](https://console.cloud.google.com/billing/budgets)**.
+2. Create/edit budget for `ai-video-editor-512009` scoped to **Cloud Run**.
+3. Set your monthly limit (e.g. ₹50 or ₹100 / $1).
+4. Select **"Enable Spend Cap"** / **"Pause service when limit is reached"**.
+5. When the limit is hit, Cloud Run invocations are automatically paused non-destructively, without affecting your storage data.
+
+#### B. Automated Billing Killswitch (Nuclear Fallback)
+For complete project-level protection, you can also arm the automated killswitch:
+```bash
+bash scripts/setup-killswitch.sh
+```
+If project spend exceeds ₹1.00, this function will automatically unlink billing from `ai-video-editor-512009`. To re-enable billing later:
+```bash
+bash scripts/relink-billing.sh <YOUR_BILLING_ACCOUNT_ID>
+```
 
 ---
 
