@@ -43,6 +43,7 @@ gcloud services enable \
   pubsub.googleapis.com \
   cloudfunctions.googleapis.com \
   cloudbuild.googleapis.com \
+  eventarc.googleapis.com \
   run.googleapis.com
 
 # 2. Create Pub/Sub Topic
