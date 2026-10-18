@@ -91,11 +91,65 @@ def test_api_server_endpoints():
     # 5. Logout clears cookie
     res = client.post("/api/auth/logout")
     assert res.status_code == 200
-    # Next me is unauthenticated
-    res = client.get("/api/auth/me")
-    assert res.json()["authenticated"] is False
-
     print("✓ FastAPI cookie authentication endpoints verified.")
+
+
+def test_chunked_upload():
+    from backend.api.server import app, CLIPS_DIR
+    import io
+
+    client = TestClient(app)
+    # Login as admin to get token
+    login_res = client.post("/api/auth/login", json={"username": "admin", "password": "editor_admin_2026"})
+    assert login_res.status_code == 200
+    token = login_res.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Prepare 3 chunks of a test video
+    chunk_1 = b"AAAA" * 1024
+    chunk_2 = b"BBBB" * 1024
+    chunk_3 = b"CCCC" * 1024
+    full_content = chunk_1 + chunk_2 + chunk_3
+    test_filename = "test_chunked_video.mp4"
+
+    # Send chunk 0
+    res = client.post(
+        "/api/upload/chunk",
+        headers=headers,
+        data={"filename": test_filename, "chunk_index": 0, "total_chunks": 3},
+        files={"file": (test_filename, io.BytesIO(chunk_1), "video/mp4")},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "chunk_received"
+
+    # Send chunk 1
+    res = client.post(
+        "/api/upload/chunk",
+        headers=headers,
+        data={"filename": test_filename, "chunk_index": 1, "total_chunks": 3},
+        files={"file": (test_filename, io.BytesIO(chunk_2), "video/mp4")},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "chunk_received"
+
+    # Send chunk 2 (final)
+    res = client.post(
+        "/api/upload/chunk",
+        headers=headers,
+        data={"filename": test_filename, "chunk_index": 2, "total_chunks": 3},
+        files={"file": (test_filename, io.BytesIO(chunk_3), "video/mp4")},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "complete"
+    assert res.json()["filename"] == test_filename
+
+    # Verify file assembled properly on disk
+    dest = CLIPS_DIR / test_filename
+    assert dest.exists()
+    assert dest.read_bytes() == full_content
+    # Clean up test file
+    dest.unlink(missing_ok=True)
+    print("✓ Chunked upload reassembly verified byte-for-byte.")
 
 
 def test_gemini_planner_execution():

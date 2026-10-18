@@ -46,22 +46,61 @@ export default function UploadScreen() {
     setUploadStatus(`Uploading ${result.assets.length} clip(s)…`);
 
     try {
-      const formData = new FormData();
-      for (const asset of result.assets) {
-        const filename = asset.fileName ?? asset.uri.split('/').pop() ?? 'video.mp4';
-        formData.append('files', {
-          uri: asset.uri,
-          name: filename,
-          type: asset.mimeType ?? 'video/mp4',
-        } as unknown as Blob);
+      const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB chunks
+      let totalUploaded = 0;
+
+      for (let fileIdx = 0; fileIdx < result.assets.length; fileIdx++) {
+        const asset = result.assets[fileIdx];
+        const filename = asset.fileName ?? asset.uri.split('/').pop() ?? `video_${fileIdx + 1}.mp4`;
+        const size = asset.fileSize ?? 0;
+
+        if (size > CHUNK_SIZE) {
+          // Large file (>20MB) - slice via Blob and upload in chunks
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          const totalChunks = Math.max(1, Math.ceil(blob.size / CHUNK_SIZE));
+
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, blob.size);
+            const chunk = blob.slice(start, end);
+
+            const formData = new FormData();
+            formData.append('file', chunk as unknown as Blob, filename);
+            formData.append('filename', filename);
+            formData.append('chunk_index', String(i));
+            formData.append('total_chunks', String(totalChunks));
+
+            const pct = Math.round(((i + 1) / totalChunks) * 100);
+            setUploadStatus(`Uploading ${filename}: part ${i + 1}/${totalChunks} (${pct}%)…`);
+
+            await apiRequest('/api/upload/chunk', {
+              method: 'POST',
+              body: formData,
+            });
+          }
+        } else {
+          // File <= 20MB - single upload directly
+          setUploadStatus(`Uploading ${filename} (${fileIdx + 1}/${result.assets.length})…`);
+          const formData = new FormData();
+          formData.append('file', {
+            uri: asset.uri,
+            name: filename,
+            type: asset.mimeType ?? 'video/mp4',
+          } as unknown as Blob);
+          formData.append('filename', filename);
+          formData.append('chunk_index', '0');
+          formData.append('total_chunks', '1');
+
+          await apiRequest('/api/upload/chunk', {
+            method: 'POST',
+            body: formData,
+          });
+        }
+        totalUploaded++;
       }
 
-      const res = await apiRequest<{ message: string; uploaded: string[] }>('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      setUploadStatus(res.message ?? `Uploaded ${res.uploaded.length} file(s).`);
+      setUploadStatus(`Uploaded ${totalUploaded} clip(s) successfully!`);
       await refresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Upload failed';
